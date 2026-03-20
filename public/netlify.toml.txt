@@ -1,7 +1,6 @@
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Cache-Control = "no-cache"
+[build]
+  command = "npm ci && npm run build"
+  publish = "dist"
 
 [[redirects]]
   from = "/*"
