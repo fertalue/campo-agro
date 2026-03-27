@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { db, exportCSV } from '../lib/supabase'
+import { db, exportCSV, getMaestros } from '../lib/supabase'
+import SearchableSelect from '../components/SearchableSelect'
 
 const CENTROS = ['Producción','Costos únicos','Comercializacion','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
 const TIPOS_PAGO = ['Canje','Cta Cte','Contado','Redagro360','Redagro270','Cheque','Transferencia']
@@ -131,6 +132,22 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const fileRef = useRef()
   const [foto, setFoto] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [opts, setOpts] = useState({
+    proveedor: [], producto: [], quien_carga: ['Fer','Leo','Gise'],
+    centro_costos: [], concepto: [], unidad: [], moneda: [],
+    factura_nombre: [], tipo_pago: [], mes_canje: []
+  })
+
+  useEffect(() => {
+    const tipos = ['proveedor','producto','centro_costos','concepto','unidad','moneda','factura_nombre','tipo_pago','mes_canje']
+    Promise.all(tipos.map(t => getMaestros(t))).then(results => {
+      const newOpts = {}
+      tipos.forEach((t, i) => { newOpts[t] = results[i] })
+      newOpts.quien_carga = ['Fer','Leo','Gise']
+      setOpts(prev => ({ ...prev, ...newOpts }))
+    })
+  }, [])
+
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
     quien_carga: 'Gise', concepto: 'Compra', campanha: '25-26',
@@ -168,7 +185,11 @@ function FormCosto({ onSave, onCancel, dolar }) {
   }
 
   const inp = (k, type, ph) => <input className="input" type={type} value={form[k]} placeholder={ph} onChange={e => f(k, e.target.value)} style={{ width: '100%' }} />
-  const sel = (k, opts) => <select className="select" value={form[k]} onChange={e => f(k, e.target.value)} style={{ width: '100%' }}>{opts.map(o => <option key={o}>{o}</option>)}</select>
+  const sel = (k, fallbackOpts) => (
+    <SearchableSelect value={form[k]} onChange={v => f(k, v)}
+      options={opts[k]?.length ? opts[k] : fallbackOpts}
+      placeholder="Seleccioná..." />
+  )
 
   return (
     <div className="card mb-3" style={{ background: '#F9F6EE', borderColor: 'var(--paja)' }}>
@@ -180,24 +201,30 @@ function FormCosto({ onSave, onCancel, dolar }) {
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setFoto(e.target.files[0])} />
         <div className="grid-2">
           <div className="field"><label className="label">Fecha</label>{inp('fecha', 'date')}</div>
-          <div className="field"><label className="label">Quién carga</label>{sel('quien_carga', ['Fer', 'Leo', 'Gise'])}</div>
+          <div className="field"><label className="label">Quién carga</label>{sel('quien_carga', ['Fer','Leo','Gise'])}</div>
         </div>
         <div className="grid-2">
-          <div className="field"><label className="label">Campaña</label>{sel('campanha', CAMPANHAS)}</div>
+          <div className="field"><label className="label">Campaña</label>
+            <SearchableSelect value={form.campanha} onChange={v => f('campanha', v)} options={CAMPANHAS} />
+          </div>
           <div className="field"><label className="label">Centro de costo</label>{sel('centro_costos', CENTROS)}</div>
         </div>
         <div className="grid-2">
-          <div className="field"><label className="label">Proveedor</label>{inp('proveedor', 'text', 'Nombre del proveedor')}</div>
-          <div className="field"><label className="label">Concepto</label>{sel('concepto', ['Compra', 'Servicio', 'NC', 'ND', 'Otro'])}</div>
+          <div className="field"><label className="label">Proveedor</label>{sel('proveedor', [])}</div>
+          <div className="field"><label className="label">Concepto</label>{sel('concepto', ['Compra','Servicio','NC','ND','Otro'])}</div>
         </div>
-        <div className="field"><label className="label">Producto / Servicio</label>{inp('producto_servicio', 'text', 'Gas oil, semillas, fumigación...')}</div>
+        <div className="field"><label className="label">Producto / Servicio</label>
+          <SearchableSelect value={form.producto_servicio} onChange={v => f('producto_servicio', v)}
+            options={opts.producto?.length ? opts.producto : []}
+            placeholder="Seleccioná o escribí..." />
+        </div>
         <div className="grid-2">
           <div className="field"><label className="label">Precio unitario</label>{inp('precio_unitario', 'number', '0.00')}</div>
-          <div className="field"><label className="label">Unidad</label>{inp('unidad', 'text', 'USD/ha, USD/l')}</div>
+          <div className="field"><label className="label">Unidad</label>{sel('unidad', ['USD/ha','USD/l','USD/Kg','USD/tn'])}</div>
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Cantidad</label>{inp('cantidad', 'number', '0')}</div>
-          <div className="field"><label className="label">Moneda</label>{sel('moneda', ['ARS', 'USD oficial', 'USD billete'])}</div>
+          <div className="field"><label className="label">Moneda</label>{sel('moneda', ['ARS','USD oficial','USD billete'])}</div>
         </div>
         {form.moneda === 'ARS' && (
           <div className="field">
@@ -226,16 +253,15 @@ function FormCosto({ onSave, onCancel, dolar }) {
           </div>
         </div>
         <div className="grid-2">
-          <div className="field"><label className="label">Factura a nombre de</label>{sel('factura_nombre', ['Fer', 'Leo', 'ambos', 'Sin factura'])}</div>
+          <div className="field"><label className="label">Factura a nombre de</label>{sel('factura_nombre', ['Fer','Leo','ambos','Sin factura'])}</div>
           <div className="field"><label className="label">Tipo de pago</label>{sel('tipo_pago', TIPOS_PAGO)}</div>
         </div>
         {form.tipo_pago === 'Canje' && (
           <div className="field">
             <label className="label">Mes del canje</label>
-            <select className="select" value={form.mes_canje} onChange={e => f('mes_canje', e.target.value)} style={{ width: '100%' }}>
-              <option value="">— Seleccioná el mes —</option>
-              {MESES_CANJE.map(m => <option key={m}>{m}</option>)}
-            </select>
+            <SearchableSelect value={form.mes_canje} onChange={v => f('mes_canje', v)}
+              options={opts.mes_canje?.length ? opts.mes_canje : MESES_CANJE}
+              placeholder="Seleccioná el mes" allowClear />
           </div>
         )}
         <div className="field">

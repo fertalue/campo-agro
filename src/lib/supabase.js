@@ -41,6 +41,18 @@ export async function getDolarOficial() {
 
 // ─── Helpers por tabla ───────────────────────────────────────
 
+// Cache maestros
+let _mc = null, _mt = 0
+export async function getMaestros(tipo) {
+  const now = Date.now()
+  if (!_mc || now - _mt > 60000) {
+    const { data } = await supabase.from("maestros").select("tipo,valor,orden").eq("activo", true).order("orden").order("valor")
+    _mc = data || []; _mt = now
+  }
+  return tipo ? _mc.filter(m => m.tipo === tipo).map(m => m.valor) : _mc
+}
+export function clearMaestrosCache() { _mc = null }
+
 export const db = {
   // Viajes
   viajes: {

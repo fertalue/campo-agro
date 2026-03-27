@@ -6,6 +6,7 @@ import Viajes from './pages/Viajes'
 import Costos from './pages/Costos'
 import Lluvias from './pages/Lluvias'
 import Admin from './pages/Admin'
+import DatosMaestros from './pages/DatosMaestros'
 import './styles/theme.css'
 
 const Placeholder = ({ title }) => (
@@ -24,12 +25,13 @@ const PAGES = {
   almacen:      () => <Placeholder title="Almacén" />,
   aplicaciones: () => <Placeholder title="Aplicaciones" />,
   admin:        Admin,
+  maestros:     DatosMaestros,
 }
 
 const PAGE_TITLES = {
   inicio: 'Panel general', costos: 'Costos', ventas: 'Ventas / Granos',
   viajes: 'Viajes al campo', lluvias: 'Precipitaciones',
-  almacen: 'Almacén', aplicaciones: 'Aplicaciones', admin: 'Administración'
+  almacen: 'Almacén', aplicaciones: 'Aplicaciones', admin: 'Administración', maestros: 'Datos maestros'
 }
 
 const MOBILE_NAV = [
