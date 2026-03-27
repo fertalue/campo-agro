@@ -122,7 +122,7 @@ function fmtUSD(n, dec = 2) {
   if (n == null || isNaN(n)) return '—'
   return 'U$S ' + parseFloat(n).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
-function fmtk(n) { return n >= 1000 ? `U$S ${(n / 1000).toFixed(1)}k` : fmtUSD(n, 1) }
+function fmtk(n) { return fmtUSD(n, 2) }
 function monthKey(f) { if (!f) return ''; const d = new Date(f + 'T12:00:00'); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 function monthLabel(ym) { const [y, m] = ym.split('-'); const n = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']; return `${n[parseInt(m) - 1]} ${y.slice(2)}` }
 
