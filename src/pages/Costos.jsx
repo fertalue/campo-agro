@@ -158,6 +158,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
       precio_total_con_iva: usdCon, monto_iva: usdCon - usdSin,
     }
     const { data, error } = await db.costos.insert(payload)
+    console.log('INSERT ERROR:', JSON.stringify(error))
+    console.log('PAYLOAD:', JSON.stringify(payload))
     if (!error && foto && data?.[0]?.id) {
       const url = await db.uploadFoto(foto, data[0].id)
       await db.costos.update(data[0].id, { foto_url: url })
