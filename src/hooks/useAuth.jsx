@@ -4,40 +4,56 @@ import { supabase } from '../lib/supabase'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser]         = useState(null)
+  const [permisos, setPermisos] = useState(null)
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null)
-      setLoading(false)
+      const u = data.session?.user ?? null
+      setUser(u)
+      if (u) fetchPermisos(u.email)
+      else setLoading(false)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) fetchPermisos(u.email)
+      else { setPermisos(null); setLoading(false) }
     })
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  const login = (email, password) =>
-    supabase.auth.signInWithPassword({ email, password })
+  async function fetchPermisos(email) {
+    try {
+      const { data } = await supabase
+        .from('user_permisos')
+        .select('*')
+        .eq('email', email)
+        .single()
+      setPermisos(data || null)
+    } catch {
+      setPermisos(null)
+    } finally {
+      setLoading(false)
+    }
+  }
 
+  const login  = (email, password) => supabase.auth.signInWithPassword({ email, password })
   const logout = () => supabase.auth.signOut()
 
-  // Inferir nombre corto del email: fer@campo.com → Fer
-  const displayName = user
-    ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1)
-    : ''
+  const displayName = permisos?.nombre
+    || (user ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : '')
 
-  // Rol según email
-  const role = user
-    ? user.email.startsWith('gise') ? 'gise'
-    : user.email.startsWith('leo')  ? 'leo'
-    : user.email.startsWith('fer')  ? 'fer'
-    : 'admin'
-    : null
+  const role    = permisos?.rol || 'usuario'
+  const isAdmin = role === 'admin'
+  const modulos = Array.isArray(permisos?.modulos) ? permisos.modulos : ['inicio','costos','lluvias','viajes']
+
+  // Siempre es una función, nunca undefined
+  const puedeVer = (moduloId) => isAdmin || modulos.includes(moduloId)
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, displayName, role }}>
+    <AuthContext.Provider value={{ user, permisos, loading, login, logout, displayName, role, isAdmin, modulos, puedeVer }}>
       {children}
     </AuthContext.Provider>
   )
