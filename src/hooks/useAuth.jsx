@@ -48,12 +48,22 @@ export function AuthProvider({ children }) {
   const role    = permisos?.rol || 'usuario'
   const isAdmin = role === 'admin'
   const modulos = Array.isArray(permisos?.modulos) ? permisos.modulos : ['inicio','costos','lluvias','viajes']
+  const mp = permisos?.modulos_permisos || {}
+
+  // Retorna 'edicion' | 'lectura' | null
+  const nivelAcceso = (moduloId) => {
+    if (isAdmin) return 'edicion'
+    if (mp[moduloId]) return mp[moduloId]
+    if (modulos.includes(moduloId)) return 'edicion'  // fallback legacy
+    return null
+  }
 
   // Siempre es una función, nunca undefined
-  const puedeVer = (moduloId) => isAdmin || modulos.includes(moduloId)
+  const puedeVer   = (moduloId) => !!nivelAcceso(moduloId)
+  const puedeEditar = (moduloId) => nivelAcceso(moduloId) === 'edicion'
 
   return (
-    <AuthContext.Provider value={{ user, permisos, loading, login, logout, displayName, role, isAdmin, modulos, puedeVer }}>
+    <AuthContext.Provider value={{ user, permisos, loading, login, logout, displayName, role, isAdmin, modulos, puedeVer, puedeEditar, nivelAcceso }}>
       {children}
     </AuthContext.Provider>
   )
