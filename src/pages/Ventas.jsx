@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const CAMPANHAS   = ['25-26','24-25','23-24','22-23']
@@ -223,6 +223,53 @@ function FormCosecha({ onSave, onCancel }) {
   )
 }
 
+// ── Multi-select para filtros ──────────────────────────────────────────────
+
+function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
+  const [open, setOpen] = React.useState(false)
+  const ref = useRef()
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const toggle = (opt) => onChange(selected.includes(opt) ? selected.filter(s=>s!==opt) : [...selected, opt])
+  const label_ = selected.length === 0 ? placeholder : selected.length === 1 ? selected[0] : `${selected.length} selec.`
+
+  return (
+    <div style={{ position:'relative' }} ref={ref}>
+      <button type="button" onClick={() => setOpen(o=>!o)}
+        style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 10px', border:'1px solid', borderRadius:6, fontSize:12, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap', background: selected.length > 0 ? '#EBF4E8' : '#F5F0E4', color: selected.length > 0 ? '#2E4F26' : '#3B2E1E', borderColor: selected.length > 0 ? '#9DC87A' : '#D8C9A8', fontWeight: selected.length > 0 ? 500 : 400 }}>
+        <span style={{ fontSize:10, color: selected.length > 0 ? '#4A7C3F' : '#A08060', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginRight:2 }}>{label}</span>
+        {label_}
+        {selected.length > 1 && <span style={{ background:'#4A7C3F', color:'#F5F0E4', borderRadius:10, padding:'1px 5px', fontSize:10, fontWeight:600 }}>{selected.length}</span>}
+        <span style={{ fontSize:9, color:'#A08060', marginLeft:2 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position:'absolute', top:'calc(100% + 3px)', left:0, zIndex:200, background:'#FDFAF4', border:'1px solid #D8C9A8', borderRadius:8, padding:4, minWidth:170, boxShadow:'0 4px 16px rgba(59,46,30,.13)' }}>
+          {options.map(opt => (
+            <div key={opt} onClick={() => toggle(opt)}
+              style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', borderRadius:5, cursor:'pointer', fontSize:12, color:'#3B2E1E', background: selected.includes(opt) ? '#EBF4E8' : 'transparent' }}>
+              <div style={{ width:14, height:14, border:'1px solid', borderColor: selected.includes(opt) ? '#4A7C3F' : '#C8B89A', borderRadius:3, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, background: selected.includes(opt) ? '#4A7C3F' : 'transparent', color:'#fff' }}>
+                {selected.includes(opt) && '✓'}
+              </div>
+              {opt}
+            </div>
+          ))}
+          {selected.length > 0 && (
+            <div onClick={() => { onChange([]); setOpen(false) }}
+              style={{ padding:'6px 10px', fontSize:11, color:'#A0714F', cursor:'pointer', textAlign:'center', borderTop:'1px solid #EDE0C8', marginTop:2 }}>
+              Limpiar
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Componente principal ────────────────────────────────────────────────────
 export default function Ventas() {
   const [viajes,  setViajes]  = useState([])
@@ -231,10 +278,11 @@ export default function Ventas() {
   const [tab, setTab]         = useState('resumen')
   const [showForm, setShowForm]   = useState(false)
   const [showCosecha, setShowCosecha] = useState(false)
-  const [fCampanha, setFCampanha] = useState('Todas')
-  const [fGrano, setFGrano]   = useState('Todos')
-  const [fTipo, setFTipo]     = useState('Todos')
-  const [busqueda, setBusqueda] = useState('')
+  const [fCampanha, setFCampanha] = useState([])
+  const [fGrano,    setFGrano]    = useState([])
+  const [fTipo,     setFTipo]     = useState([])
+  const [fTitular,  setFTitular]  = useState([])
+  const [busqueda,  setBusqueda]  = useState('')
 
   useEffect(() => { fetchAll() }, [])
 
@@ -249,11 +297,13 @@ export default function Ventas() {
     setLoading(false)
   }
 
-  // Filtros
+  // Filtros multi-select
+  const matchArr = (arr, val) => arr.length === 0 || arr.includes(val)
   const filtered = viajes.filter(v => {
-    if (fCampanha !== 'Todas' && v.campanha !== fCampanha) return false
-    if (fGrano !== 'Todos' && v.grano !== fGrano) return false
-    if (fTipo !== 'Todos' && v.tipo !== fTipo) return false
+    if (!matchArr(fCampanha, v.campanha)) return false
+    if (!matchArr(fGrano, v.grano)) return false
+    if (!matchArr(fTipo, v.tipo)) return false
+    if (!matchArr(fTitular, v.titular)) return false
     if (busqueda) {
       const b = busqueda.toLowerCase()
       return [v.titular, v.comprador, v.grano, v.ncp, v.contrato_aplicado, v.patente]
@@ -262,7 +312,8 @@ export default function Ventas() {
     return true
   })
 
-  const cosechaFiltrada = cosecha.filter(c => fCampanha === 'Todas' || c.campanha === fCampanha)
+  const cosechaFiltrada = cosecha.filter(c => matchArr(fCampanha, c.campanha))
+  const campañaActiva   = fCampanha.length === 1 ? fCampanha[0] : null
 
   // Totales
   const totalRomaneo = filtered.reduce((a,b) => a + (b.neto_romaneo||0), 0)
@@ -311,7 +362,7 @@ export default function Ventas() {
     // Viajes de venta por titular para esta campaña y categoria de grano
     const esCategoria = (grano) => cat === 'Maíz' ? grano === 'Maíz' : (grano === 'Soja' || grano === 'Soja semilla')
     const viajesCat   = viajes.filter(v =>
-      (fCampanha === 'Todas' || v.campanha === fCampanha) &&
+      matchArr(fCampanha, v.campanha) &&
       esCategoria(v.grano) && v.tipo === 'Venta'
     )
 
@@ -320,7 +371,7 @@ export default function Ventas() {
 
     // Viajes de alquiler (van al padre)
     const viajesAlquiler = viajes.filter(v =>
-      (fCampanha === 'Todas' || v.campanha === fCampanha) &&
+      matchArr(fCampanha, v.campanha) &&
       esCategoria(v.grano) && v.tipo === 'Alquiler'
     )
     const entregadoAlquiler = viajesAlquiler.reduce((a,b) => a + (b.neto_romaneo||0), 0)
@@ -359,17 +410,18 @@ export default function Ventas() {
       {showCosecha && <FormCosecha onSave={async()=>{setShowCosecha(false);await fetchAll()}} onCancel={()=>setShowCosecha(false)} />}
       {showForm    && <FormViaje  onSave={async()=>{setShowForm(false);  await fetchAll()}} onCancel={()=>setShowForm(false)} />}
 
-      {/* Filtros */}
+      {/* Filtros multi-select */}
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
-        {[['campanha', setFCampanha, fCampanha, campAnhos],
-          ['grano',    setFGrano,   fGrano,   ['Todos',...GRANOS]],
-          ['tipo',     setFTipo,    fTipo,    ['Todos',...TIPOS]],
-        ].map(([k, setter, val, opts]) => (
-          <select key={k} value={val} onChange={e=>setter(e.target.value)}
-            style={{ padding:'6px 8px', border:'1px solid #D8C9A8', borderRadius:6, fontSize:12, background:'#F5F0E4', fontFamily:'inherit', color:'#3B2E1E' }}>
-            {opts.map(o => <option key={o}>{o}</option>)}
-          </select>
-        ))}
+        <VtMultiSelect label="Campaña"  options={CAMPANHAS}  selected={fCampanha}  onChange={setFCampanha}  placeholder="Todas" />
+        <VtMultiSelect label="Grano"    options={[...new Set(viajes.map(v=>v.grano).filter(Boolean))].sort()} selected={fGrano} onChange={setFGrano} placeholder="Todos" />
+        <VtMultiSelect label="Tipo"     options={TIPOS}      selected={fTipo}      onChange={setFTipo}      placeholder="Todos" />
+        <VtMultiSelect label="Titular"  options={[...new Set(viajes.map(v=>v.titular).filter(Boolean))].sort()} selected={fTitular} onChange={setFTitular} placeholder="Todos" />
+        {(fCampanha.length + fGrano.length + fTipo.length + fTitular.length) > 0 && (
+          <button onClick={() => { setFCampanha([]); setFGrano([]); setFTipo([]); setFTitular([]) }}
+            style={{ padding:'6px 10px', border:'1px solid #D8C9A8', borderRadius:6, fontSize:11, cursor:'pointer', background:'transparent', color:'var(--arcilla)', fontFamily:'inherit' }}>
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -384,7 +436,7 @@ export default function Ventas() {
         <StatCard label="Neto Romaneo" value={fmtTn(totalRomaneo)} sub={`${totalViajes} viajes`} color="#4A7C3F" pct={80} />
         <StatCard label="Pesada campo" value={fmtTn(totalNeto)} sub="neto campo" color="#7A9EAD" pct={85} />
         <StatCard label="Dif. campo/puerto" value={fmtKg(Math.abs(totalDif))} sub={totalDif > 0 ? 'a favor' : 'en contra'} color={totalDif >= 0 ? '#4A7C3F' : '#A0714F'} pct={40} />
-        <StatCard label="Camiones" value={totalViajes.toString()} sub={`campaña ${fCampanha}`} color="#C8A96E" pct={60} />
+        <StatCard label="Camiones" value={totalViajes.toString()} sub={fCampanha.length === 1 ? `campaña ${fCampanha[0]}` : `${filtered.length} viajes`} color="#C8A96E" pct={60} />
       </div>
 
       {/* RESUMEN */}
@@ -590,7 +642,7 @@ export default function Ventas() {
       {/* DISTRIBUCIÓN */}
       {tab === 'distribucion' && (
         <div>
-          {fCampanha === 'Todas' && (
+          {fCampanha.length !== 1 && (
             <div style={{ padding:'10px 14px', background:'#F5EDD8', border:'1px solid #C8A96E', borderRadius:8, marginBottom:14, fontSize:12, color:'#6B3E22' }}>
               Seleccioná una campaña específica para ver la distribución correcta.
             </div>
