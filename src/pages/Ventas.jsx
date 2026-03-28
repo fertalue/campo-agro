@@ -7,6 +7,8 @@ const TIPOS       = ['Venta','Alquiler','Prestamo']
 const TITULARES   = ['Fer','Leo','Fer y Leo','Giaguaro','Ketopy S.A','Dari','Dario']
 const COMPRADORES = ['FYO Acopio S.A.','Tecnocampo','Oro verde','conci srl','Monsanto','MAS AGRO','DARIO ROSSI','6 hermanos','Eslava Gustavo']
 
+const ALQUILER_PCT = 0.27  // 27% para pago de alquiler al padre
+const TITULARES_ALQUILER = ['Giaguaro','Ketopy S.A','Dario','GIAGUARO','KETOPY S.A','Dari']
 const GRANO_COLOR = { 'Maíz':'#C8A96E', 'Soja':'#4A7C3F', 'Soja semilla':'#9DC87A', 'Trigo':'#A0714F', 'Girasol':'#EF9F27' }
 const TIPO_CHIP   = { 'Venta':'chip-green', 'Alquiler':'chip-amber', 'Prestamo':'chip-sky', 'Cosecha':'chip-muted' }
 
@@ -229,7 +231,7 @@ export default function Ventas() {
   const [tab, setTab]         = useState('resumen')
   const [showForm, setShowForm]   = useState(false)
   const [showCosecha, setShowCosecha] = useState(false)
-  const [fCampanha, setFCampanha] = useState('25-26')
+  const [fCampanha, setFCampanha] = useState('Todas')
   const [fGrano, setFGrano]   = useState('Todos')
   const [fTipo, setFTipo]     = useState('Todos')
   const [busqueda, setBusqueda] = useState('')
@@ -291,6 +293,47 @@ export default function Ventas() {
   const granos = Object.keys(byGrano)
   const campAnhos = ['Todas', ...CAMPANHAS]
 
+  // ── Distribución campaña ──────────────────────────────────────────
+  // Agrupar cosecha por categoria: Maíz y Soja (soja + soja semilla)
+  const categorias = { 'Maíz': 0, 'Soja': 0 }
+  cosechaFiltrada.forEach(c => {
+    if (c.grano === 'Maíz') categorias['Maíz'] += c.neto_romaneo || 0
+    else categorias['Soja'] += c.neto_romaneo || 0  // Soja + Soja semilla
+  })
+
+  // Por cada categoría: alquiler 27%, resto 50/50 Fer y Leo
+  const distrib = Object.entries(categorias).map(([cat, cosechaTotal]) => {
+    const alquiler    = cosechaTotal * ALQUILER_PCT
+    const disponible  = cosechaTotal * (1 - ALQUILER_PCT)
+    const cuotaFer    = disponible / 2
+    const cuotaLeo    = disponible / 2
+
+    // Viajes de venta por titular para esta campaña y categoria de grano
+    const esCategoria = (grano) => cat === 'Maíz' ? grano === 'Maíz' : (grano === 'Soja' || grano === 'Soja semilla')
+    const viajesCat   = viajes.filter(v =>
+      (fCampanha === 'Todas' || v.campanha === fCampanha) &&
+      esCategoria(v.grano) && v.tipo === 'Venta'
+    )
+
+    const vendidoFer = viajesCat.filter(v => v.titular === 'Fer').reduce((a,b) => a + (b.neto_romaneo||0), 0)
+    const vendidoLeo = viajesCat.filter(v => v.titular === 'Leo').reduce((a,b) => a + (b.neto_romaneo||0), 0)
+
+    // Viajes de alquiler (van al padre)
+    const viajesAlquiler = viajes.filter(v =>
+      (fCampanha === 'Todas' || v.campanha === fCampanha) &&
+      esCategoria(v.grano) && v.tipo === 'Alquiler'
+    )
+    const entregadoAlquiler = viajesAlquiler.reduce((a,b) => a + (b.neto_romaneo||0), 0)
+
+    return {
+      cat, cosechaTotal, alquiler, disponible, cuotaFer, cuotaLeo,
+      vendidoFer, vendidoLeo, entregadoAlquiler,
+      restanteFer: cuotaFer - vendidoFer,
+      restanteLeo: cuotaLeo - vendidoLeo,
+      restanteAlquiler: alquiler - entregadoAlquiler,
+    }
+  }).filter(d => d.cosechaTotal > 0)
+
   return (
     <div>
       <style>{CSS}</style>
@@ -331,7 +374,7 @@ export default function Ventas() {
 
       {/* Tabs */}
       <div className="vt-tabs">
-        {[['resumen','Resumen'],['viajes','Viajes'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
+        {[['resumen','Resumen'],['distribucion','Distribución'],['viajes','Viajes'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
           <button key={id} className={`vt-tab${tab===id?' on':''}`} onClick={()=>setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -541,6 +584,114 @@ export default function Ventas() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* DISTRIBUCIÓN */}
+      {tab === 'distribucion' && (
+        <div>
+          {fCampanha === 'Todas' && (
+            <div style={{ padding:'10px 14px', background:'#F5EDD8', border:'1px solid #C8A96E', borderRadius:8, marginBottom:14, fontSize:12, color:'#6B3E22' }}>
+              Seleccioná una campaña específica para ver la distribución correcta.
+            </div>
+          )}
+          {distrib.length === 0 ? (
+            <div className="card" style={{ textAlign:'center', fontSize:13, color:'var(--arcilla)' }}>
+              No hay datos de cosecha para la campaña {fCampanha}. Registrá la cosecha primero con el botón "+ Cosecha".
+            </div>
+          ) : distrib.map(d => (
+            <div key={d.cat} className="card" style={{ marginBottom:16 }}>
+              {/* Título grano */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                <div style={{ width:14, height:14, borderRadius:'50%', background: d.cat === 'Maíz' ? '#C8A96E' : '#4A7C3F' }}/>
+                <h3 style={{ fontSize:15 }}>{d.cat}</h3>
+                <span style={{ fontSize:12, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
+              </div>
+
+              {/* Barra de distribución visual */}
+              <div style={{ display:'flex', height:36, borderRadius:8, overflow:'hidden', marginBottom:16, fontSize:11, fontWeight:500 }}>
+                <div style={{ flex: d.alquiler, background:'#A0714F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:60 }}>
+                  <span>Alquiler 27%</span>
+                </div>
+                <div style={{ flex: d.cuotaFer, background:'#4A7C3F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}>
+                  <span>Fer</span>
+                </div>
+                <div style={{ flex: d.cuotaLeo, background:'#C8A96E', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}>
+                  <span>Leo</span>
+                </div>
+              </div>
+
+              {/* Cards por destinatario */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+                {/* Alquiler - padre */}
+                <div style={{ background:'#FAF3EC', border:'1px solid #D8C9A8', borderRadius:10, padding:'14px' }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:'#A0714F', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
+                    Alquiler — Padre
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>Ketopy · Giaguaro · Dario</div>
+                  <div style={{ marginBottom:8 }}>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div>
+                    <div style={{ fontSize:18, fontWeight:600, color:'#A0714F' }}>{fmtTn(d.alquiler)}</div>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>Entregado</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(d.entregadoAlquiler)}</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>Pendiente</div>
+                      <div style={{ fontSize:14, fontWeight:600, color: d.restanteAlquiler > 0 ? '#993C1D' : '#4A7C3F' }}>
+                        {d.restanteAlquiler > 0 ? fmtTn(d.restanteAlquiler) : '✓ Completo'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ height:8, borderRadius:4, background:'#A0714F', width:`${Math.min(d.alquiler > 0 ? d.entregadoAlquiler/d.alquiler*100 : 0, 100)}%`, transition:'width .5s' }}/>
+                  </div>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>
+                    {d.alquiler > 0 ? Math.round(d.entregadoAlquiler/d.alquiler*100) : 0}% entregado
+                  </div>
+                </div>
+
+                {/* Fer */}
+                {[
+                  { nombre:'Fer', cuota: d.cuotaFer, vendido: d.vendidoFer, restante: d.restanteFer, col:'#4A7C3F', bg:'#F0F7EE', border:'#9DC87A' },
+                  { nombre:'Leo', cuota: d.cuotaLeo, vendido: d.vendidoLeo, restante: d.restanteLeo, col:'#C8A96E', bg:'#FAF5EC', border:'#D8C9A8' },
+                ].map(p => (
+                  <div key={p.nombre} style={{ background: p.bg, border:`1px solid ${p.border}`, borderRadius:10, padding:'14px' }}>
+                    <div style={{ fontSize:10, fontWeight:600, color: p.col, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
+                      {p.nombre}
+                    </div>
+                    <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>
+                      {Math.round(ALQUILER_PCT*50*2)/1}% del total · 50% del disponible
+                    </div>
+                    <div style={{ marginBottom:8 }}>
+                      <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div>
+                      <div style={{ fontSize:18, fontWeight:600, color: p.col }}>{fmtTn(p.cuota)}</div>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                      <div>
+                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>Ya vendió</div>
+                        <div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(p.vendido)}</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>Le queda</div>
+                        <div style={{ fontSize:14, fontWeight:600, color: p.restante > 0 ? '#993C1D' : '#4A7C3F' }}>
+                          {p.restante > 0 ? fmtTn(p.restante) : '✓ Todo vendido'}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}>
+                      <div style={{ height:8, borderRadius:4, background: p.col, width:`${Math.min(p.cuota > 0 ? p.vendido/p.cuota*100 : 0, 100)}%`, transition:'width .5s' }}/>
+                    </div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>
+                      {p.cuota > 0 ? Math.round(p.vendido/p.cuota*100) : 0}% vendido
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
