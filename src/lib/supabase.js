@@ -7,36 +7,42 @@ const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON || 'eyJhbGciOiJIUzI1NiI
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
 
-// ─── Dólar oficial (dolarapi.com) ────────────────────────────
-export async function getDolarOficial() {
+// ─── Cotizaciones dólar (dolarapi.com) ───────────────────────
+export async function getDolares() {
   try {
-    // Primero revisamos si tenemos cotización de hoy en caché
     const today = new Date().toISOString().split('T')[0]
+    const tipos = ['oficial', 'mep', 'blue']
+    const endpoints = {
+      oficial: 'https://dolarapi.com/v1/dolares/oficial',
+      mep:     'https://dolarapi.com/v1/dolares/bolsa',
+      blue:    'https://dolarapi.com/v1/dolares/blue',
+    }
     const { data: cached } = await supabase
-      .from('cotizaciones_usd')
-      .select('venta')
-      .eq('fecha', today)
-      .eq('tipo', 'oficial')
-      .single()
+      .from('cotizaciones_usd').select('tipo,compra,venta').eq('fecha', today).in('tipo', tipos)
+    if (cached?.length === 3) {
+      return Object.fromEntries(cached.map(c => [c.tipo, { compra: c.compra, venta: c.venta }]))
+    }
+    const resultado = {}
+    await Promise.all(tipos.map(async (tipo) => {
+      const yaEnCache = cached?.find(c => c.tipo === tipo)
+      if (yaEnCache) { resultado[tipo] = { compra: yaEnCache.compra, venta: yaEnCache.venta }; return }
+      try {
+        const res = await fetch(endpoints[tipo])
+        const json = await res.json()
+        resultado[tipo] = { compra: json.compra, venta: json.venta }
+        await supabase.from('cotizaciones_usd').upsert(
+          { fecha: today, tipo, compra: json.compra, venta: json.venta, fuente: 'dolarapi.com' },
+          { onConflict: 'fecha,tipo' }
+        )
+      } catch { resultado[tipo] = null }
+    }))
+    return resultado
+  } catch { return null }
+}
 
-    if (cached) return cached.venta
-
-    // Si no, consultamos la API externa
-    const res = await fetch('https://dolarapi.com/v1/dolares/oficial')
-    const json = await res.json()
-    const venta = json.venta
-
-    // Guardamos en caché
-    await supabase.from('cotizaciones_usd').upsert({
-      fecha: today, tipo: 'oficial',
-      compra: json.compra, venta,
-      fuente: 'dolarapi.com'
-    }, { onConflict: 'fecha,tipo' })
-
-    return venta
-  } catch {
-    return null
-  }
+export async function getDolarOficial() {
+  const d = await getDolares()
+  return d?.oficial?.venta ?? null
 }
 
 // ─── Helpers por tabla ───────────────────────────────────────

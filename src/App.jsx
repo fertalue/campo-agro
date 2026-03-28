@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
+import { getDolares } from './lib/supabase'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import Viajes from './pages/Viajes'
@@ -63,6 +64,11 @@ function AppShell() {
   const [page, setPage] = useState('inicio')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const isMobile = window.innerWidth <= 768
+  const [dolares, setDolares] = useState(null)
+
+  useEffect(() => {
+    getDolares().then(setDolares)
+  }, [])
 
   // Si la página actual ya no está permitida, ir a inicio
   useEffect(() => {
@@ -96,7 +102,18 @@ function AppShell() {
             )}
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--tierra)' }}>{PAGE_TITLES[page] || page}</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {dolares && [
+              { tipo: 'Oficial', data: dolares.oficial, color: '#2E4F26', bg: '#EBF4E8', bd: '#9DC87A' },
+              { tipo: 'MEP',     data: dolares.mep,     color: '#2C5A6A', bg: '#E4F0F4', bd: '#7A9EAD' },
+              { tipo: 'Blue',    data: dolares.blue,    color: '#6B3E22', bg: '#F5EDD8', bd: '#C8A96E' },
+            ].map(({ tipo, data, color, bg, bd }) => data ? (
+              <div key={tipo} style={{ background: bg, border: `1px solid ${bd}`, borderRadius: 8, padding: '3px 8px', fontSize: 10, color, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ fontWeight: 600 }}>{tipo}</span>
+                <span style={{ opacity: 0.7 }}>c: \${Math.round(data.compra).toLocaleString('es-AR')}</span>
+                <span style={{ fontWeight: 600 }}>v: \${Math.round(data.venta).toLocaleString('es-AR')}</span>
+              </div>
+            ) : null)}
             <div style={{ background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 20, padding: '3px 10px', fontSize: 11, color: 'var(--musgo)', fontWeight: 500 }}>
               Campaña 25/26
             </div>
