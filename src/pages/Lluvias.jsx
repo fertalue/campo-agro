@@ -189,65 +189,54 @@ export default function Lluvias() {
           </div>
         ) : (
           <>
-            {/* Gráfico de barras con puntos acumulados */}
-            <div style={{ position: 'relative', height: 140, marginBottom: 8 }}>
-              <svg width="100%" height="140" style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible' }}>
-                {acumConSuma.map((m, i) => {
-                  const total = acumConSuma.length
-                  const xPct = ((i + 0.5) / total) * 100
-                  const alturaBarra = m.mm > 0 ? Math.max((m.mm / maxMmMes) * 80, 4) : 2
-                  const yPunto = 120 - (m.acumTotal / maxAcum) * 110
-                  const esMesActual = anhoVer === anhoActual && m.mes === mesActual
-                  return (
-                    <g key={m.mes}>
-                      {/* Barra */}
-                      <rect
-                        x={`${xPct - (40 / total)}%`}
-                        y={120 - alturaBarra}
-                        width={`${80 / total}%`}
-                        height={alturaBarra}
-                        fill={esMesActual ? '#4E7A8A' : m.mm > 0 ? 'var(--cielo)' : '#E4EFF3'}
-                        rx="3"
+            {/* Gráfico con coordenadas en píxeles fijos, viewBox escala al ancho real */}
+            <div style={{ width: '100%', marginBottom: 8 }}>
+              {(() => {
+                const W = 600, H = 140
+                const pad = 10
+                const n = acumConSuma.length
+                const colW = (W - pad * 2) / n
+                const barW = colW * 0.5
+                return (
+                  <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="auto" style={{ display: 'block' }}>
+                    {acumConSuma.map((m, i) => {
+                      const cx = pad + colW * i + colW / 2
+                      const alturaBarra = m.mm > 0 ? Math.max((m.mm / maxMmMes) * 80, 4) : 2
+                      const cy = H - 20 - (m.acumTotal / maxAcum) * (H - 40)
+                      const esMesActual = anhoVer === anhoActual && m.mes === mesActual
+                      return (
+                        <g key={m.mes}>
+                          <rect x={cx - barW / 2} y={H - 20 - alturaBarra} width={barW} height={alturaBarra}
+                            fill={esMesActual ? '#4E7A8A' : m.mm > 0 ? '#7A9EAD' : '#E4EFF3'} rx="2" />
+                          <circle cx={cx} cy={cy} r="3.5" fill="#4E7A8A" stroke="#fff" strokeWidth="1" />
+                          <text x={cx} y={cy - 7} textAnchor="middle" fontSize="8" fill="#4E7A8A" fontWeight="600">
+                            {m.acumTotal.toFixed(0)}
+                          </text>
+                        </g>
+                      )
+                    })}
+                    {acumConSuma.length > 1 && (
+                      <polyline
+                        fill="none" stroke="#4E7A8A" strokeWidth="1.5" strokeDasharray="4 2" opacity="0.6"
+                        points={acumConSuma.map((m, i) => {
+                          const cx = pad + colW * i + colW / 2
+                          const cy = H - 20 - (m.acumTotal / maxAcum) * (H - 40)
+                          return `${cx},${cy}`
+                        }).join(' ')}
                       />
-                      {/* Punto */}
-                      <circle cx={`${xPct}%`} cy={yPunto} r="4"
-                        fill={esMesActual ? '#4E7A8A' : '#4E7A8A'}
-                        stroke={esMesActual ? '#3B5F6A' : 'var(--lluvia)'}
-                        strokeWidth="1.5"
-                      />
-                      {/* Valor acumulado */}
-                      <text x={`${xPct}%`} y={yPunto - 8} textAnchor="middle"
-                        fontSize="9" fill="#4E7A8A" fontWeight="600">
-                        {m.acumTotal.toFixed(0)}
-                      </text>
-                    </g>
-                  )
-                })}
-                {/* Línea conectora entre puntos */}
-                {acumConSuma.length > 1 && (
-                  <polyline
-                    fill="none"
-                    stroke="#4E7A8A"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 2"
-                    opacity="0.6"
-                    points={acumConSuma.map((m, i) => {
-                      const xPct = ((i + 0.5) / acumConSuma.length) * 100
-                      const y = 120 - (m.acumTotal / maxAcum) * 110
-                      return `${xPct}%,${y}`
-                    }).join(' ')}
-                  />
-                )}
-              </svg>
-            </div>
-
-            {/* Etiquetas de mes */}
-            <div style={{ display: 'flex', gap: 0, marginTop: 6 }}>
-              {acumConSuma.map(m => (
-                <div key={m.mes} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
-                  {m.label}
-                </div>
-              ))}
+                    )}
+                    {/* Etiquetas de mes */}
+                    {acumConSuma.map((m, i) => {
+                      const cx = pad + colW * i + colW / 2
+                      return (
+                        <text key={`lbl-${m.mes}`} x={cx} y={H - 5} textAnchor="middle" fontSize="8" fill="#A08060">
+                          {m.label}
+                        </text>
+                      )
+                    })}
+                  </svg>
+                )
+              })()}
             </div>
 
             {/* Leyenda */}
