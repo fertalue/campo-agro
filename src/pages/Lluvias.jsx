@@ -189,58 +189,57 @@ export default function Lluvias() {
           </div>
         ) : (
           <>
-            {/* Gráfico de barras con línea acumulada */}
-            <div style={{ display: 'flex', gap: 0, alignItems: 'flex-end', height: 120, marginBottom: 8 }}>
-              {acumConSuma.map((m, i) => {
-                const alturaBarra = m.mm > 0 ? Math.max((m.mm / maxMmMes) * 80, 4) : 2
-                const alturaLinea = (m.acumTotal / maxAcum) * 110
-                const esMesActual = anhoVer === anhoActual && m.mes === mesActual
-                return (
-                  <div key={m.mes} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', height: 120 }}>
-                    {/* Valor acumulado arriba */}
-                    <div style={{
-                      position: 'absolute', bottom: alturaLinea + 4,
-                      fontSize: 9, color: 'var(--lluvia)', fontWeight: 600,
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {m.acumTotal.toFixed(0)}
-                    </div>
-                    {/* Punto de la línea acumulada */}
-                    <div style={{
-                      position: 'absolute', bottom: alturaLinea - 3,
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: esMesActual ? '#4E7A8A' : 'var(--lluvia)',
-                      border: esMesActual ? '2px solid #3B5F6A' : '1.5px solid var(--lluvia)',
-                      zIndex: 2
-                    }} />
-                    {/* Barra del mes */}
-                    <div style={{
-                      position: 'absolute', bottom: 0,
-                      width: '60%', height: alturaBarra,
-                      background: esMesActual ? '#4E7A8A' : m.mm > 0 ? 'var(--cielo)' : '#E4EFF3',
-                      borderRadius: '3px 3px 0 0',
-                      transition: 'height 0.4s ease'
-                    }} />
-                  </div>
-                )
-              })}
+            {/* Gráfico de barras con puntos acumulados */}
+            <div style={{ position: 'relative', height: 140, marginBottom: 8 }}>
+              <svg width="100%" height="140" style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible' }}>
+                {acumConSuma.map((m, i) => {
+                  const total = acumConSuma.length
+                  const xPct = ((i + 0.5) / total) * 100
+                  const alturaBarra = m.mm > 0 ? Math.max((m.mm / maxMmMes) * 80, 4) : 2
+                  const yPunto = 120 - (m.acumTotal / maxAcum) * 110
+                  const esMesActual = anhoVer === anhoActual && m.mes === mesActual
+                  return (
+                    <g key={m.mes}>
+                      {/* Barra */}
+                      <rect
+                        x={`${xPct - (40 / total)}%`}
+                        y={120 - alturaBarra}
+                        width={`${80 / total}%`}
+                        height={alturaBarra}
+                        fill={esMesActual ? '#4E7A8A' : m.mm > 0 ? 'var(--cielo)' : '#E4EFF3'}
+                        rx="3"
+                      />
+                      {/* Punto */}
+                      <circle cx={`${xPct}%`} cy={yPunto} r="4"
+                        fill={esMesActual ? '#4E7A8A' : '#4E7A8A'}
+                        stroke={esMesActual ? '#3B5F6A' : 'var(--lluvia)'}
+                        strokeWidth="1.5"
+                      />
+                      {/* Valor acumulado */}
+                      <text x={`${xPct}%`} y={yPunto - 8} textAnchor="middle"
+                        fontSize="9" fill="#4E7A8A" fontWeight="600">
+                        {m.acumTotal.toFixed(0)}
+                      </text>
+                    </g>
+                  )
+                })}
+                {/* Línea conectora entre puntos */}
+                {acumConSuma.length > 1 && (
+                  <polyline
+                    fill="none"
+                    stroke="#4E7A8A"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 2"
+                    opacity="0.6"
+                    points={acumConSuma.map((m, i) => {
+                      const xPct = ((i + 0.5) / acumConSuma.length) * 100
+                      const y = 120 - (m.acumTotal / maxAcum) * 110
+                      return `${xPct}%,${y}`
+                    }).join(' ')}
+                  />
+                )}
+              </svg>
             </div>
-
-            {/* Línea de conexión SVG */}
-            <svg width="100%" height="0" style={{ position: 'relative', marginTop: -120, pointerEvents: 'none', overflow: 'visible' }}>
-              <polyline
-                points={acumConSuma.map((m, i) => {
-                  const x = (i / acumConSuma.length + 0.5 / acumConSuma.length) * 100
-                  const y = 120 - (m.acumTotal / maxAcum) * 110
-                  return `${x}%,${y}`
-                }).join(' ')}
-                fill="none"
-                stroke="var(--lluvia)"
-                strokeWidth="1.5"
-                strokeDasharray="4 2"
-                opacity="0.6"
-              />
-            </svg>
 
             {/* Etiquetas de mes */}
             <div style={{ display: 'flex', gap: 0, marginTop: 6 }}>
