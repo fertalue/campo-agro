@@ -9,6 +9,7 @@ import Lluvias from './pages/Lluvias'
 import Admin from './pages/Admin'
 import DatosMaestros from './pages/DatosMaestros'
 import Contratos from './pages/Contratos'
+import Ventas from './pages/Ventas'
 import './styles/theme.css'
 
 const Placeholder = ({ title }) => (
@@ -21,7 +22,7 @@ const Placeholder = ({ title }) => (
 const PAGES = {
   inicio:       () => <Placeholder title="Panel general" />,
   costos:       Costos,
-  ventas:       () => <Placeholder title="Ventas / Granos" />,
+  ventas:       Ventas,
   viajes:       Viajes,
   lluvias:      Lluvias,
   almacen:      () => <Placeholder title="Almacén" />,
