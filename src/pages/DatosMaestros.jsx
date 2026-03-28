@@ -12,6 +12,7 @@ const TIPOS = [
   { id: 'iva_pct',        label: '% IVA' },
   { id: 'factura_nombre', label: 'Factura a nombre de' },
   { id: 'tipo_pago',      label: 'Tipos de pago' },
+  { id: 'marca',          label: 'Marcas de productos' },
   { id: 'mes_canje',      label: 'Meses de canje' },
 ]
 

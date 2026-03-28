@@ -220,13 +220,13 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const [foto, setFoto] = useState(null)
   const [saving, setSaving] = useState(false)
   const [opts, setOpts] = useState({
-    proveedor: [], producto: [], quien_carga: ['Fer','Leo','Gise'],
+    proveedor: [], producto: [], marca: [], quien_carga: ['Fer','Leo','Gise'],
     centro_costos: [], concepto: [], unidad: [], moneda: [],
     factura_nombre: [], tipo_pago: [], mes_canje: []
   })
 
   useEffect(() => {
-    const tipos = ['proveedor','producto','centro_costos','concepto','unidad','moneda','factura_nombre','tipo_pago','mes_canje']
+    const tipos = ['proveedor','producto','marca','centro_costos','concepto','unidad','moneda','factura_nombre','tipo_pago','mes_canje']
     Promise.all(tipos.map(t => getMaestros(t))).then(results => {
       const newOpts = {}
       tipos.forEach((t, i) => { newOpts[t] = results[i] })
@@ -240,6 +240,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
     quien_carga: 'Gise', concepto: 'Compra', campanha: '25-26',
     centro_costos: 'Producción', producto_servicio: '', proveedor: '',
     precio_unitario: '', unidad: 'USD/ha', cantidad: '',
+    marca: '', presentacion: '', contenido_por_unidad: '', unidad_base: '',
     moneda: 'ARS', cotizacion_usd: dolar || '',
     iva_incluido: false, iva_pct: 0.21,
     factura_nombre: 'ambos', con_sin_factura: 'Con Factura',
@@ -253,11 +254,16 @@ function FormCosto({ onSave, onCancel, dolar }) {
 
   async function submit(e) {
     e.preventDefault(); setSaving(true)
+    const puBase = form.precio_unitario && form.contenido_por_unidad
+      ? (parseFloat(form.precio_unitario) / parseFloat(form.contenido_por_unidad))
+      : parseFloat(form.precio_unitario) || null
     const payload = {
       ...form,
       precio_unitario: parseFloat(form.precio_unitario) || null,
       cantidad: parseFloat(form.cantidad) || null,
       cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
+      contenido_por_unidad: parseFloat(form.contenido_por_unidad) || null,
+      precio_por_unidad_base: puBase,
       monto_usd: usdSin, precio_total_sin_iva: usdSin,
       precio_total_con_iva: usdCon, monto_iva: usdCon - usdSin,
     }
@@ -307,8 +313,48 @@ function FormCosto({ onSave, onCancel, dolar }) {
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Precio unitario</label>{inp('precio_unitario', 'number', '0.00')}</div>
-          <div className="field"><label className="label">Unidad</label>{sel('unidad', ['USD/ha','USD/l','USD/Kg','USD/tn'])}</div>
+          <div className="field"><label className="label">Unidad facturada</label>{sel('unidad', ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa'])}</div>
         </div>
+
+        {/* Marca y normalización — campos opcionales */}
+        <div style={{ background: '#F5F0E8', border: '1px solid #E8D5A3', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--barro)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 10 }}>
+            Marca y normalización de precio (opcional)
+          </div>
+          <div className="grid-2" style={{ marginBottom: 10 }}>
+            <div className="field">
+              <label className="label">Marca</label>
+              <input className="input" value={form.marca} onChange={e => f('marca', e.target.value)} placeholder="Nufarm, Sigma, Pampa..." />
+            </div>
+            <div className="field">
+              <label className="label">Presentación comprada</label>
+              <input className="input" value={form.presentacion} onChange={e => f('presentacion', e.target.value)} placeholder="bidón 20L, bolsa 25kg, litro..." />
+            </div>
+          </div>
+          <div className="grid-2">
+            <div className="field">
+              <label className="label">Contenido por unidad ({form.unidad_base || 'L, Kg...'})</label>
+              <input className="input" type="number" step="0.01" value={form.contenido_por_unidad}
+                onChange={e => f('contenido_por_unidad', e.target.value)}
+                placeholder="20 (si bidón 20L), 25 (si bolsa 25kg)..." />
+            </div>
+            <div className="field">
+              <label className="label">Unidad base para comparar</label>
+              <input className="input" value={form.unidad_base} onChange={e => f('unidad_base', e.target.value)} placeholder="L, Kg, tn..." />
+            </div>
+          </div>
+          {form.precio_unitario && form.contenido_por_unidad && (
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'white', borderRadius: 6, border: '1px solid #D8C9A8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: 'var(--arcilla)' }}>
+                Precio por {form.unidad_base || 'unidad base'}:
+              </span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--musgo)' }}>
+                U$S {(parseFloat(form.precio_unitario) / parseFloat(form.contenido_por_unidad)).toFixed(4)} / {form.unidad_base || '?'}
+              </span>
+            </div>
+          )}
+        </div>
+
         <div className="grid-2">
           <div className="field"><label className="label">Cantidad</label>{inp('cantidad', 'number', '0')}</div>
           <div className="field"><label className="label">Moneda</label>{sel('moneda', ['ARS','USD oficial','USD billete'])}</div>
@@ -462,10 +508,27 @@ export default function Costos() {
   const tiposU = [...new Set(costos.map(c => c.tipo_pago).filter(Boolean))].sort()
 
   const preciosProd = costos
-    .filter(c => c.producto_servicio === producto && c.precio_unitario)
+    .filter(c => c.producto_servicio === producto && (c.precio_por_unidad_base || c.precio_unitario))
     .sort((a, b) => a.fecha?.localeCompare(b.fecha))
-    .map(c => ({ fecha: monthLabel(monthKey(c.fecha)), sin: parseFloat(c.precio_unitario) || 0, con: (parseFloat(c.precio_unitario) || 0) * (1 + (c.iva_pct || 0)), unidad: c.unidad }))
+    .map(c => {
+      const base = c.precio_por_unidad_base || parseFloat(c.precio_unitario) || 0
+      return {
+        fecha: monthLabel(monthKey(c.fecha)),
+        sin: base,
+        con: base * (1 + (c.iva_pct || 0)),
+        unidad: c.unidad_base || c.unidad,
+        marca: c.marca || '',
+        presentacion: c.presentacion || '',
+        proveedor: c.proveedor || '',
+      }
+    })
   const maxPr = Math.max(...preciosProd.map(p => ivaMode2 === 'sin' ? p.sin : p.con), 1)
+  const marcasUnicas = [...new Set(preciosProd.map(p => p.marca).filter(Boolean))]
+  const MARCA_COLORS = ['#4A7C3F','#7A9EAD','#C8A96E','#A0714F','#8B6B4A','#9DC87A','#B8D0D8']
+  const marcaColor = (marca) => {
+    const idx = marcasUnicas.indexOf(marca)
+    return idx >= 0 ? MARCA_COLORS[idx % MARCA_COLORS.length] : '#4A7C3F'
+  }
 
   const canjes = filtered.filter(c => c.tipo_pago === 'Canje')
   const canjesMes = {}
@@ -712,15 +775,54 @@ export default function Costos() {
             {!producto ? <div style={{ textAlign: 'center', padding: 32, fontSize: 13, color: 'var(--arcilla)' }}>Seleccioná un producto para ver la evolución de precios</div>
               : preciosProd.length === 0 ? <div style={{ textAlign: 'center', padding: 32, fontSize: 13, color: 'var(--arcilla)' }}>No hay registros con precio unitario para "{producto}"</div>
                 : <>
-                  <div className="c-pt">{producto} {preciosProd[0]?.unidad ? `(${preciosProd[0].unidad})` : ''} — {ivaMode2 === 'sin' ? 'sin IVA' : 'con IVA'}</div>
+                  <div className="c-pt">
+                    {producto} {preciosProd[0]?.unidad ? `— precio por ${preciosProd[0].unidad}` : ''} {ivaMode2 === 'sin' ? '(sin IVA)' : '(con IVA)'}
+                  </div>
+                  {/* Leyenda de marcas */}
+                  {marcasUnicas.length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                      {marcasUnicas.map(m => (
+                        <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--arcilla)' }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 3, background: marcaColor(m) }} />
+                          {m}
+                        </div>
+                      ))}
+                      {preciosProd.some(p => !p.marca) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 3, background: '#4A7C3F' }} />
+                          Sin marca
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* Mejor precio */}
+                  {preciosProd.length > 1 && (() => {
+                    const mejor = preciosProd.reduce((a, b) => (ivaMode2==='sin'?a.sin:a.con) <= (ivaMode2==='sin'?b.sin:b.con) ? a : b)
+                    return (
+                      <div style={{ marginBottom: 12, padding: '7px 12px', background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 7, fontSize: 12, color: 'var(--musgo)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2E4F26" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Mejor precio: <strong>{mejor.fecha}</strong>
+                        {mejor.marca && <> · <strong>{mejor.marca}</strong></>}
+                        {mejor.proveedor && <> · {mejor.proveedor}</>}
+                        · <strong>U$S {(ivaMode2==='sin'?mejor.sin:mejor.con).toFixed(4)}/{mejor.unidad}</strong>
+                      </div>
+                    )
+                  })()}
                   {preciosProd.map((p, i) => {
                     const val = ivaMode2 === 'sin' ? p.sin : p.con
                     const prev = i > 0 ? (ivaMode2 === 'sin' ? preciosProd[i - 1].sin : preciosProd[i - 1].con) : null
                     const diff = prev ? ((val - prev) / prev * 100) : null
-                    const col = diff === null ? '#4A7C3F' : diff > 0 ? '#A0714F' : '#4A7C3F'
+                    const col = marcaColor(p.marca)
                     return <div className="pr-row" key={i}>
                       <div className="pr-date">{p.fecha}</div>
-                      <div className="pr-bw"><div className="pr-bf" style={{ width: `${val / maxPr * 100}%`, background: col }}>U$S {val.toFixed(2)}</div></div>
+                      <div style={{ width: 80, flexShrink: 0, fontSize: 11 }}>
+                        {p.marca ? (
+                          <span style={{ background: col + '22', color: col, border: `1px solid ${col}66`, borderRadius: 20, padding: '1px 7px', fontSize: 10, fontWeight: 500 }}>{p.marca}</span>
+                        ) : (
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{p.proveedor?.slice(0,10)}</span>
+                        )}
+                      </div>
+                      <div className="pr-bw"><div className="pr-bf" style={{ width: `${val / maxPr * 100}%`, background: col }}>U$S {val.toFixed(4)}</div></div>
                       <div className="pr-diff" style={{ color: diff === null ? 'var(--text-muted)' : diff > 0 ? '#A0714F' : '#4A7C3F' }}>
                         {diff !== null ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%` : ''}
                       </div>
