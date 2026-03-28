@@ -471,6 +471,21 @@ export default function Costos() {
   const canjesMes = {}
   canjes.forEach(c => { const m = c.mes_canje || 'Sin fecha'; if (!canjesMes[m]) canjesMes[m] = { total: 0, items: [] }; canjesMes[m].total += gm(c); canjesMes[m].items.push(c) })
 
+  // Cuenta corriente
+  const ctacte = filtered.filter(c => c.tipo_pago === 'Cta Cte')
+  const ctacteProv = {}
+  ctacte.forEach(c => {
+    const key = c.proveedor || 'Sin proveedor'
+    if (!ctacteProv[key]) ctacteProv[key] = { total: 0, fer: 0, leo: 0, items: [] }
+    const monto = gm(c)
+    ctacteProv[key].total += monto
+    if (c.factura_nombre === 'Fer') ctacteProv[key].fer += monto
+    else if (c.factura_nombre === 'Leo') ctacteProv[key].leo += monto
+    else if (c.factura_nombre === 'ambos') { ctacteProv[key].fer += monto/2; ctacteProv[key].leo += monto/2 }
+    ctacteProv[key].items.push(c)
+  })
+  const ctacteProvList = Object.entries(ctacteProv).sort((a,b) => b[1].total - a[1].total)
+
   const activeFilters = fCampanha.length + fMes.length + fNombre.length + fCentro.length + fProv.length + fTipoPago.length
 
   return (
@@ -495,7 +510,7 @@ export default function Costos() {
       {showForm && <FormCosto dolar={dolar} onCancel={() => setShowForm(false)} onSave={async () => { setShowForm(false); await fetchAll() }} />}
 
       <div className="c-tabs">
-        {[['resumen', 'Resumen'], ['detalle', 'Detalle'], ['precios', 'Precios unitarios'], ['canjes', 'Canjes']].map(([id, lbl]) => (
+        {[['resumen', 'Resumen'], ['detalle', 'Detalle'], ['precios', 'Precios unitarios'], ['canjes', 'Canjes'], ['ctacte', 'Cta Cte']].map(([id, lbl]) => (
           <button key={id} className={`c-tab${tab === id ? ' on' : ''}`} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -719,44 +734,196 @@ export default function Costos() {
       {/* CANJES */}
       {tab === 'canjes' && (
         <div>
-          <div className="c-panel" style={{ marginBottom: 14 }}>
-            <div className="c-pt">Resumen por mes de vencimiento</div>
-            {Object.keys(canjesMes).length === 0
-              ? <div style={{ fontSize: 13, color: 'var(--arcilla)' }}>No hay canjes con los filtros actuales</div>
-              : Object.entries(canjesMes)
-                .sort((a, b) => (MESES_CANJE.indexOf(a[0]) || 99) - (MESES_CANJE.indexOf(b[0]) || 99))
-                .map(([mes, { total: t, items }]) => (
-                  <div key={mes} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #EDE0C8' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <span className="canje-b">{mes}</span>
+          {/* Stats rápidos */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginBottom: 16 }}>
+            <div className="c-stat">
+              <div className="c-sl">Total canjes</div>
+              <div className="c-sv">{fmtUSD(canjes.reduce((a,b) => a+gm(b), 0), 0)}</div>
+              <div className="c-ss">{canjes.length} facturas</div>
+              <div className="c-sbar"><div className="c-sfill" style={{ width: '100%', background: '#C8A96E' }}/></div>
+            </div>
+            <div className="c-stat">
+              <div className="c-sl">Fer</div>
+              <div className="c-sv">{fmtUSD(canjes.filter(c=>c.factura_nombre==='Fer'||c.factura_nombre==='ambos').reduce((a,b)=>a+gm(b)/(b.factura_nombre==='ambos'?2:1),0), 0)}</div>
+              <div className="c-ss">a nombre de Fer</div>
+              <div className="c-sbar"><div className="c-sfill" style={{ width: '60%', background: '#6A9E58' }}/></div>
+            </div>
+            <div className="c-stat">
+              <div className="c-sl">Leo</div>
+              <div className="c-sv">{fmtUSD(canjes.filter(c=>c.factura_nombre==='Leo'||c.factura_nombre==='ambos').reduce((a,b)=>a+gm(b)/(b.factura_nombre==='ambos'?2:1),0), 0)}</div>
+              <div className="c-ss">a nombre de Leo</div>
+              <div className="c-sbar"><div className="c-sfill" style={{ width: '50%', background: '#C8A96E' }}/></div>
+            </div>
+          </div>
+
+          {/* Por mes con desglose proveedor */}
+          {Object.keys(canjesMes).length === 0
+            ? <div className="c-panel" style={{ textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>No hay canjes con los filtros actuales</div>
+            : Object.entries(canjesMes)
+              .sort((a, b) => {
+                const ia = MESES_CANJE.indexOf(a[0]), ib = MESES_CANJE.indexOf(b[0])
+                return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+              })
+              .map(([mes, { total: t, items }]) => {
+                const provs = {}
+                items.forEach(c => {
+                  const p = c.proveedor || 'Sin proveedor'
+                  if (!provs[p]) provs[p] = { total: 0, fer: 0, leo: 0, ambos: 0 }
+                  const m = gm(c)
+                  provs[p].total += m
+                  if (c.factura_nombre === 'Fer') provs[p].fer += m
+                  else if (c.factura_nombre === 'Leo') provs[p].leo += m
+                  else if (c.factura_nombre === 'ambos') { provs[p].fer += m/2; provs[p].leo += m/2; provs[p].ambos += m }
+                })
+                const totalFerMes = items.filter(c=>c.factura_nombre==='Fer'||c.factura_nombre==='ambos').reduce((a,b)=>a+gm(b)/(b.factura_nombre==='ambos'?2:1),0)
+                const totalLeoMes = items.filter(c=>c.factura_nombre==='Leo'||c.factura_nombre==='ambos').reduce((a,b)=>a+gm(b)/(b.factura_nombre==='ambos'?2:1),0)
+
+                return (
+                  <div key={mes} className="c-panel" style={{ marginBottom: 12 }}>
+                    {/* Header del mes */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span className="canje-b" style={{ fontSize: 13, padding: '4px 12px' }}>{mes}</span>
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{items.length} factura{items.length !== 1 ? 's' : ''}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{[...new Set(items.map(i => i.proveedor))].filter(Boolean).join(' · ')}</div>
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                        {totalFerMes > 0 && <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 10, color: '#3B6D11', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fer</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#2E4F26' }}>{fmtUSD(totalFerMes, 0)}</div>
+                        </div>}
+                        {totalLeoMes > 0 && <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 10, color: '#854F0B', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Leo</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#6B3E22' }}>{fmtUSD(totalLeoMes, 0)}</div>
+                        </div>}
+                        <div style={{ textAlign: 'right', paddingLeft: 12, borderLeft: '1px solid #EDE0C8' }}>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</div>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--tierra)' }}>{fmtUSD(t, 0)}</div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tierra)' }}>{fmtUSD(t, 0)}</div>
+
+                    {/* Desglose por proveedor */}
+                    {Object.entries(provs).sort((a,b) => b[1].total - a[1].total).map(([prov, data]) => (
+                      <div key={prov} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#FAF7F0', borderRadius: 7, marginBottom: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--tierra)' }}>{prov}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                            {items.filter(c => c.proveedor === prov).map(c => c.producto_servicio).filter(Boolean).join(' · ')}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+                          {data.fer > 0 && <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 9, color: '#3B6D11', fontWeight: 600, textTransform: 'uppercase' }}>Fer</div>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: '#2E4F26' }}>{fmtUSD(data.fer, 0)}</div>
+                          </div>}
+                          {data.leo > 0 && <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 9, color: '#854F0B', fontWeight: 600, textTransform: 'uppercase' }}>Leo</div>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: '#6B3E22' }}>{fmtUSD(data.leo, 0)}</div>
+                          </div>}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tierra)', minWidth: 80, textAlign: 'right' }}>{fmtUSD(data.total, 0)}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )
+              })}
+        </div>
+      )}
+
+      {/* CTA CTE */}
+      {tab === 'ctacte' && (
+        <div>
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginBottom: 16 }}>
+            <div className="c-stat">
+              <div className="c-sl">Total cta cte</div>
+              <div className="c-sv">{fmtUSD(ctacte.reduce((a,b) => a+gm(b), 0), 0)}</div>
+              <div className="c-ss">{ctacte.length} facturas</div>
+              <div className="c-sbar"><div className="c-sfill" style={{ width: '100%', background: 'var(--cielo)' }}/></div>
+            </div>
+            <div className="c-stat">
+              <div className="c-sl">Sin pagar</div>
+              <div className="c-sv">{fmtUSD(ctacte.filter(c=>!c.check_pago).reduce((a,b)=>a+gm(b),0), 0)}</div>
+              <div className="c-ss">{ctacte.filter(c=>!c.check_pago).length} pendientes</div>
+              <div className="c-sbar"><div className="c-sfill" style={{ width: '70%', background: '#A0714F' }}/></div>
+            </div>
+            <div className="c-stat">
+              <div className="c-sl">Pagado</div>
+              <div className="c-sv">{fmtUSD(ctacte.filter(c=>c.check_pago).reduce((a,b)=>a+gm(b),0), 0)}</div>
+              <div className="c-ss">{ctacte.filter(c=>c.check_pago).length} facturas</div>
+              <div className="c-sbar"><div className="c-sfill" style={{ width: '30%', background: 'var(--pasto)' }}/></div>
+            </div>
           </div>
-          <div className="c-panel" style={{ padding: 0, overflowX: 'auto' }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid #D8C9A8' }}><div className="c-pt" style={{ marginBottom: 0 }}>Detalle canjes</div></div>
-            <table className="c-tbl">
-              <thead><tr><th>Fecha</th><th>Proveedor</th><th>Producto</th><th>Mes canje</th><th>Sin IVA</th><th>Con IVA</th><th>Factura</th></tr></thead>
-              <tbody>
-                {canjes.map(c => (
-                  <tr key={c.id}>
-                    <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.fecha ? new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                    <td style={{ fontWeight: 500 }}>{c.proveedor}</td>
-                    <td style={{ color: 'var(--suelo)' }}>{c.producto_servicio}</td>
-                    <td>{c.mes_canje ? <span className="canje-b">{c.mes_canje}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Sin fecha</span>}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{fmtUSD(c.precio_total_sin_iva || c.monto_usd)}</td>
-                    <td style={{ color: 'var(--arcilla)', fontFamily: 'monospace' }}>{fmtUSD(c.precio_total_con_iva || c.monto_usd)}</td>
-                    <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+          {/* Por proveedor */}
+          {ctacteProvList.length === 0
+            ? <div className="c-panel" style={{ textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>No hay facturas en cuenta corriente</div>
+            : ctacteProvList.map(([prov, data]) => {
+              const pendiente = data.items.filter(c => !c.check_pago).reduce((a,b) => a+gm(b), 0)
+              const pagado    = data.items.filter(c =>  c.check_pago).reduce((a,b) => a+gm(b), 0)
+              return (
+                <div key={prov} className="c-panel" style={{ marginBottom: 12 }}>
+                  {/* Header proveedor */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tierra)', marginBottom: 4 }}>{prov}</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {pendiente > 0 && <span style={{ background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 6, padding: '2px 8px', fontSize: 11, color: '#993C1D', fontWeight: 500 }}>
+                          Pendiente: {fmtUSD(pendiente, 0)}
+                        </span>}
+                        {pagado > 0 && <span style={{ background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 6, padding: '2px 8px', fontSize: 11, color: 'var(--musgo)', fontWeight: 500 }}>
+                          Pagado: {fmtUSD(pagado, 0)}
+                        </span>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0 }}>
+                      {data.fer > 0 && <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 10, color: '#3B6D11', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fer</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#2E4F26' }}>{fmtUSD(data.fer, 0)}</div>
+                      </div>}
+                      {data.leo > 0 && <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 10, color: '#854F0B', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Leo</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#6B3E22' }}>{fmtUSD(data.leo, 0)}</div>
+                      </div>}
+                      <div style={{ textAlign: 'right', paddingLeft: 12, borderLeft: '1px solid #EDE0C8' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</div>
+                        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--tierra)' }}>{fmtUSD(data.total, 0)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Facturas del proveedor */}
+                  {data.items.sort((a,b) => (a.dia_pago||'').localeCompare(b.dia_pago||'')).map(c => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: c.check_pago ? '#F0F7EE' : '#FAF7F0', borderRadius: 7, marginBottom: 5, borderLeft: `3px solid ${c.check_pago ? 'var(--pasto)' : '#F0997B'}` }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.fecha ? new Date(c.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'}) : '—'}</span>
+                          <span style={{ fontSize: 12, color: 'var(--suelo)' }}>{c.producto_servicio}</span>
+                          {c.factura_numero && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.factura_numero}</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 3, alignItems: 'center' }}>
+                          <span className={`cc ${CHIP[c.factura_nombre]||'chip-muted'}`}>{c.factura_nombre}</span>
+                          {c.dia_pago && <span style={{ fontSize: 11, color: c.check_pago ? 'var(--pasto)' : '#993C1D', fontWeight: 500 }}>
+                            Vence: {new Date(c.dia_pago+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'})}
+                          </span>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tierra)' }}>{fmtUSD(gm(c), 0)}</div>
+                        </div>
+                        <div onClick={async () => { await db.costos.update(c.id, { check_pago: !c.check_pago }); await fetchAll() }}
+                          style={{ cursor: 'pointer' }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, border: '1.5px solid', borderColor: c.check_pago ? 'var(--pasto)' : '#C8B89A', background: c.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {c.check_pago && <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
         </div>
       )}
     </div>
