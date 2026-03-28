@@ -11,6 +11,7 @@ const TODOS_MODULOS = [
   { id: 'almacen',       label: 'Almacén',           icon: '◫' },
   { id: 'aplicaciones',  label: 'Aplicaciones',      icon: '◑' },
   { id: 'admin',         label: 'Administración',    icon: '⚙' },
+  { id: 'maestros',     label: 'Datos maestros',    icon: '⊞' },
 ]
 
 const CSS = `
