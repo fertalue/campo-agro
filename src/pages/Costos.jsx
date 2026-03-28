@@ -130,15 +130,17 @@ function monthLabel(ym) { const [y, m] = ym.split('-'); const n = ['Ene', 'Feb',
 // ── Fila de edición rápida ───────────────────────────────────────────────────
 function EditRow({ costo, onSave, onCancel }) {
   const [form, setForm] = useState({
-    proveedor:        costo.proveedor || '',
+    proveedor:         costo.proveedor || '',
     producto_servicio: costo.producto_servicio || '',
-    centro_costos:    costo.centro_costos || '',
-    tipo_pago:        costo.tipo_pago || '',
-    mes_canje:        costo.mes_canje || '',
-    dia_pago:         costo.dia_pago || '',
-    check_pago:       costo.check_pago || false,
-    factura_nombre:   costo.factura_nombre || '',
-    comentarios:      costo.comentarios || '',
+    centro_costos:     costo.centro_costos || '',
+    factura_nombre:    costo.factura_nombre || '',
+    factura_numero:    costo.factura_numero || '',
+    tipo_pago:         costo.tipo_pago || '',
+    mes_canje:         costo.mes_canje || '',
+    dia_pago:          costo.dia_pago || '',
+    check_pago:        costo.check_pago || false,
+    comentarios:       costo.comentarios || '',
+    campanha:          costo.campanha || '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const [saving, setSaving] = useState(false)
@@ -155,46 +157,41 @@ function EditRow({ costo, onSave, onCancel }) {
       style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', ...style }} />
   )
 
+  const si = { padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit', width: '100%' }
+
   return (
     <tr style={{ background: '#F9F6EE' }}>
-      <td style={cell} colSpan={2}>
-        <input value={form.proveedor} onChange={e => f('proveedor', e.target.value)}
-          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit' }} />
-      </td>
+      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{costo.fecha ? new Date(costo.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+      <td style={cell}><input value={form.campanha} onChange={e => f('campanha', e.target.value)} style={si} /></td>
+      <td style={cell}><input value={form.proveedor} onChange={e => f('proveedor', e.target.value)} style={{ ...si, fontSize: 12, fontWeight: 500 }} /></td>
+      <td style={cell}><input value={form.producto_servicio} onChange={e => f('producto_servicio', e.target.value)} style={si} /></td>
       <td style={cell}>
-        <input value={form.producto_servicio} onChange={e => f('producto_servicio', e.target.value)}
-          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit' }} />
-      </td>
-      <td style={cell}>
-        <select value={form.centro_costos} onChange={e => f('centro_costos', e.target.value)}
-          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>
+        <select value={form.centro_costos} onChange={e => f('centro_costos', e.target.value)} style={si}>
           {CENTROS.map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
-      <td style={cell} colSpan={3} style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>
-        {fmtUSD(costo.precio_total_sin_iva || costo.monto_usd)}
-      </td>
+      <td style={cell}><input value={form.factura_numero} onChange={e => f('factura_numero', e.target.value)} style={si} placeholder="N° factura" /></td>
       <td style={cell}>
-        <select value={form.factura_nombre} onChange={e => f('factura_nombre', e.target.value)}
-          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>
+        <select value={form.factura_nombre} onChange={e => f('factura_nombre', e.target.value)} style={si}>
           {['Fer','Leo','ambos','Sin factura'].map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
+      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtUSD(costo.precio_total_sin_iva || costo.monto_usd)}</td>
+      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11 }}>{costo.iva_pct ? `${(costo.iva_pct * 100).toFixed(1)}%` : '0%'}</td>
+      <td style={cell} style={{ color: 'var(--arcilla)', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtUSD(costo.precio_total_con_iva || costo.monto_usd)}</td>
+      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11 }}>{costo.moneda}</td>
       <td style={cell}>
-        <select value={form.tipo_pago} onChange={e => f('tipo_pago', e.target.value)}
-          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>
+        <select value={form.tipo_pago} onChange={e => f('tipo_pago', e.target.value)} style={si}>
           {TIPOS_PAGO.map(o => <option key={o}>{o}</option>)}
         </select>
-        {form.tipo_pago === 'Canje' && (
-          <input value={form.mes_canje} onChange={e => f('mes_canje', e.target.value)}
-            placeholder="mes canje" style={{ marginTop: 3, width: '100%', padding: '3px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }} />
-        )}
       </td>
       <td style={cell}>
-        {form.tipo_pago === 'Cta Cte' && (
-          <input type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)}
-            style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }} />
-        )}
+        <input value={form.mes_canje} onChange={e => f('mes_canje', e.target.value)}
+          placeholder="ej: May 26" style={si} list="meses-canje-list" />
+        <datalist id="meses-canje-list">{MESES_CANJE.map(m => <option key={m} value={m} />)}</datalist>
+      </td>
+      <td style={cell}>
+        <input type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)} style={si} />
       </td>
       <td style={cell}>
         <div onClick={() => f('check_pago', !form.check_pago)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -203,14 +200,14 @@ function EditRow({ costo, onSave, onCancel }) {
           </div>
         </div>
       </td>
+      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11 }}>{costo.quien_carga}</td>
+      <td style={cell}><input value={form.comentarios} onChange={e => f('comentarios', e.target.value)} style={si} placeholder="comentarios" /></td>
       <td style={cell}>
         <div style={{ display: 'flex', gap: 4 }}>
           <button onClick={save} disabled={saving} style={{ background: 'var(--pasto)', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
             {saving ? '...' : 'OK'}
           </button>
-          <button onClick={onCancel} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
-            ✕
-          </button>
+          <button onClick={onCancel} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>✕</button>
         </div>
       </td>
     </tr>
@@ -407,6 +404,7 @@ export default function Costos() {
   const [fProv, setFProv] = useState([])
   const [fTipoPago, setFTipoPago] = useState([])
   const [editando, setEditando] = useState(null)  // id del registro en edición
+  const [busqueda, setBusqueda] = useState('')
 
   useEffect(() => { fetchAll() }, [])
   async function fetchAll() {
@@ -419,14 +417,26 @@ export default function Costos() {
 
   const match = (arr, val) => arr.length === 0 || arr.includes(val)
 
-  const filtered = costos.filter(c =>
-    match(fCampanha, c.campanha) &&
-    match(fMes, monthKey(c.fecha)) &&
-    match(fNombre, c.factura_nombre) &&
-    match(fCentro, c.centro_costos) &&
-    match(fProv, c.proveedor) &&
-    match(fTipoPago, c.tipo_pago)
-  )
+  const filtered = costos.filter(c => {
+    if (!match(fCampanha, c.campanha)) return false
+    if (!match(fMes, monthKey(c.fecha))) return false
+    if (!match(fNombre, c.factura_nombre)) return false
+    if (!match(fCentro, c.centro_costos)) return false
+    if (!match(fProv, c.proveedor)) return false
+    if (!match(fTipoPago, c.tipo_pago)) return false
+    return true
+  })
+
+  // Búsqueda global — solo se aplica en tab detalle
+  const busquedaLower = busqueda.toLowerCase()
+  const filteredDetalle = busqueda ? filtered.filter(c =>
+    [c.proveedor, c.producto_servicio, c.centro_costos, c.factura_numero,
+     c.tipo_pago, c.factura_nombre, c.campanha, c.mes_canje, c.comentarios,
+     c.quien_carga, c.moneda, c.concepto]
+    .some(v => v && String(v).toLowerCase().includes(busquedaLower)) ||
+    (c.monto_usd && String(c.monto_usd).includes(busqueda)) ||
+    (c.fecha && c.fecha.includes(busqueda))
+  ) : filtered
 
   const gm = c => ivaMode === 'sin'
     ? (c.precio_total_sin_iva || c.monto_usd || 0)
@@ -588,54 +598,79 @@ export default function Costos() {
 
       {/* DETALLE */}
       {tab === 'detalle' && (
-        <div className="c-panel" style={{ padding: 0, overflowX: 'auto' }}>
-          {loading ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Cargando...</div>
-            : filtered.length === 0 ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Sin registros con estos filtros</div>
-              : <table className="c-tbl">
-                <thead><tr>
-                  <th>Fecha</th><th>Proveedor</th><th>Descripción</th><th>Centro</th>
-                  <th>Sin IVA</th><th>IVA</th><th>Con IVA</th><th>Factura</th><th>Pago</th><th>Fecha pago</th><th>Pagado</th><th></th>
-                </tr></thead>
-                <tbody>
-                  {filtered.map(c => {
-                    const isEdit = editando === c.id
-                    return isEdit ? (
-                      <EditRow key={c.id} costo={c} onSave={async (updated) => {
-                        await db.costos.update(c.id, updated)
-                        setEditando(null)
-                        await fetchAll()
-                      }} onCancel={() => setEditando(null)} />
-                    ) : (
-                    <tr key={c.id}>
-                      <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.fecha ? new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                      <td style={{ fontWeight: 500 }}>{c.proveedor}</td>
-                      <td style={{ color: 'var(--suelo)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.producto_servicio}</td>
-                      <td><span className="cc chip-muted">{c.centro_costos}</span></td>
-                      <td style={{ fontFamily: 'monospace' }}>{fmtUSD(c.precio_total_sin_iva || c.monto_usd)}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{c.iva_pct ? `${(c.iva_pct * 100).toFixed(1)}%` : '0%'}</td>
-                      <td style={{ color: 'var(--arcilla)', fontFamily: 'monospace' }}>{fmtUSD(c.precio_total_con_iva || c.monto_usd)}</td>
-                      <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
-                      <td style={{ color: 'var(--cielo)' }}>{c.tipo_pago}</td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.dia_pago ? new Date(c.dia_pago + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                      <td>
-                        <div onClick={async () => {
-                          await db.costos.update(c.id, { check_pago: !c.check_pago })
+        <div>
+          {/* Buscador global */}
+          <div style={{ marginBottom: 10, position: 'relative' }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--arcilla)" strokeWidth="1.5" strokeLinecap="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+              <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
+            </svg>
+            <input
+              value={busqueda} onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar en todas las columnas: proveedor, producto, N° factura, mes canje, comentarios..."
+              style={{ width: '100%', padding: '9px 12px 9px 32px', border: '1px solid #D8C9A8', borderRadius: 8, fontSize: 13, background: '#FDFAF4', color: 'var(--tierra)', fontFamily: 'inherit' }}
+            />
+            {busqueda && (
+              <button onClick={() => setBusqueda('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--arcilla)', fontSize: 16, lineHeight: 1 }}>✕</button>
+            )}
+          </div>
+          {busqueda && <div style={{ fontSize: 11, color: 'var(--arcilla)', marginBottom: 8 }}>{filteredDetalle.length} resultado{filteredDetalle.length !== 1 ? 's' : ''} para "{busqueda}"</div>}
+          <div className="c-panel" style={{ padding: 0, overflowX: 'auto' }}>
+            {loading ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Cargando...</div>
+              : filteredDetalle.length === 0 ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Sin registros con estos filtros</div>
+                : <table className="c-tbl">
+                  <thead><tr>
+                    <th>Fecha</th><th>Campaña</th><th>Proveedor</th><th>Producto / Servicio</th>
+                    <th>Centro</th><th>N° Factura</th><th>Factura</th>
+                    <th>Sin IVA</th><th>IVA %</th><th>Con IVA</th>
+                    <th>Moneda</th><th>Tipo pago</th><th>Mes canje</th>
+                    <th>Fecha pago</th><th>Pagado</th><th>Quién</th><th>Comentarios</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredDetalle.map(c => {
+                      const isEdit = editando === c.id
+                      return isEdit ? (
+                        <EditRow key={c.id} costo={c} onSave={async (updated) => {
+                          await db.costos.update(c.id, updated)
+                          setEditando(null)
                           await fetchAll()
-                        }} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid', borderColor: c.check_pago ? 'var(--pasto)' : '#C8B89A', background: c.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {c.check_pago && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <button onClick={() => setEditando(c.id)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--arcilla)' }}>
-                          Editar
-                        </button>
-                      </td>
-                    </tr>
-                  )})}
-                </tbody>
-              </table>}
+                        }} onCancel={() => setEditando(null)} />
+                      ) : (
+                        <tr key={c.id}>
+                          <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.fecha ? new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                          <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.campanha || '—'}</td>
+                          <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{c.proveedor}</td>
+                          <td style={{ color: 'var(--suelo)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.producto_servicio}</td>
+                          <td><span className="cc chip-muted" style={{ whiteSpace: 'nowrap' }}>{c.centro_costos}</span></td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.factura_numero || '—'}</td>
+                          <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_sin_iva || c.monto_usd)}</td>
+                          <td style={{ color: 'var(--text-muted)' }}>{c.iva_pct ? `${(c.iva_pct * 100).toFixed(1)}%` : '0%'}</td>
+                          <td style={{ color: 'var(--arcilla)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_con_iva || c.monto_usd)}</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.moneda}</td>
+                          <td style={{ color: 'var(--cielo)', whiteSpace: 'nowrap' }}>{c.tipo_pago}</td>
+                          <td>{c.mes_canje ? <span className="canje-b">{c.mes_canje}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.dia_pago ? new Date(c.dia_pago + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                          <td>
+                            <div onClick={async () => { await db.costos.update(c.id, { check_pago: !c.check_pago }); await fetchAll() }}
+                              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid', borderColor: c.check_pago ? 'var(--pasto)' : '#C8B89A', background: c.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {c.check_pago && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.quien_carga}</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.comentarios}>{c.comentarios || '—'}</td>
+                          <td>
+                            <button onClick={() => setEditando(c.id)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--arcilla)', whiteSpace: 'nowrap' }}>
+                              Editar
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>}
+          </div>
         </div>
       )}
 
