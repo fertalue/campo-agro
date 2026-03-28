@@ -9,6 +9,7 @@ const TODOS_MODULOS = [
   { id: 'lluvias',       label: 'Precipitaciones' },
   { id: 'almacen',       label: 'Almacén' },
   { id: 'aplicaciones',  label: 'Aplicaciones' },
+  { id: 'contratos',     label: 'Contratos' },
   { id: 'admin',         label: 'Administración' },
   { id: 'maestros',      label: 'Datos maestros' },
 ]
