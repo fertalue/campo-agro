@@ -127,6 +127,96 @@ function fmtk(n) { return fmtUSD(n, 2) }
 function monthKey(f) { if (!f) return ''; const d = new Date(f + 'T12:00:00'); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 function monthLabel(ym) { const [y, m] = ym.split('-'); const n = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']; return `${n[parseInt(m) - 1]} ${y.slice(2)}` }
 
+// ── Fila de edición rápida ───────────────────────────────────────────────────
+function EditRow({ costo, onSave, onCancel }) {
+  const [form, setForm] = useState({
+    proveedor:        costo.proveedor || '',
+    producto_servicio: costo.producto_servicio || '',
+    centro_costos:    costo.centro_costos || '',
+    tipo_pago:        costo.tipo_pago || '',
+    mes_canje:        costo.mes_canje || '',
+    dia_pago:         costo.dia_pago || '',
+    check_pago:       costo.check_pago || false,
+    factura_nombre:   costo.factura_nombre || '',
+    comentarios:      costo.comentarios || '',
+  })
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    await onSave(form)
+    setSaving(false)
+  }
+
+  const cell = { padding: '6px 4px', verticalAlign: 'middle' }
+  const inp = (k, style={}) => (
+    <input value={form[k]} onChange={e => f(k, e.target.value)}
+      style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', ...style }} />
+  )
+
+  return (
+    <tr style={{ background: '#F9F6EE' }}>
+      <td style={cell} colSpan={2}>
+        <input value={form.proveedor} onChange={e => f('proveedor', e.target.value)}
+          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit' }} />
+      </td>
+      <td style={cell}>
+        <input value={form.producto_servicio} onChange={e => f('producto_servicio', e.target.value)}
+          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit' }} />
+      </td>
+      <td style={cell}>
+        <select value={form.centro_costos} onChange={e => f('centro_costos', e.target.value)}
+          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>
+          {CENTROS.map(o => <option key={o}>{o}</option>)}
+        </select>
+      </td>
+      <td style={cell} colSpan={3} style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>
+        {fmtUSD(costo.precio_total_sin_iva || costo.monto_usd)}
+      </td>
+      <td style={cell}>
+        <select value={form.factura_nombre} onChange={e => f('factura_nombre', e.target.value)}
+          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>
+          {['Fer','Leo','ambos','Sin factura'].map(o => <option key={o}>{o}</option>)}
+        </select>
+      </td>
+      <td style={cell}>
+        <select value={form.tipo_pago} onChange={e => f('tipo_pago', e.target.value)}
+          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>
+          {TIPOS_PAGO.map(o => <option key={o}>{o}</option>)}
+        </select>
+        {form.tipo_pago === 'Canje' && (
+          <input value={form.mes_canje} onChange={e => f('mes_canje', e.target.value)}
+            placeholder="mes canje" style={{ marginTop: 3, width: '100%', padding: '3px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }} />
+        )}
+      </td>
+      <td style={cell}>
+        {form.tipo_pago === 'Cta Cte' && (
+          <input type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)}
+            style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }} />
+        )}
+      </td>
+      <td style={cell}>
+        <div onClick={() => f('check_pago', !form.check_pago)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid', borderColor: form.check_pago ? 'var(--pasto)' : '#C8B89A', background: form.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {form.check_pago && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </div>
+        </div>
+      </td>
+      <td style={cell}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={save} disabled={saving} style={{ background: 'var(--pasto)', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
+            {saving ? '...' : 'OK'}
+          </button>
+          <button onClick={onCancel} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
+            ✕
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ── Formulario ───────────────────────────────────────────────────────────────
 function FormCosto({ onSave, onCancel, dolar }) {
   const fileRef = useRef()
@@ -156,7 +246,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
     moneda: 'ARS', cotizacion_usd: dolar || '',
     iva_incluido: false, iva_pct: 0.21,
     factura_nombre: 'ambos', con_sin_factura: 'Con Factura',
-    tipo_pago: 'Canje', mes_canje: '', comentarios: '',
+    tipo_pago: 'Canje', mes_canje: '', dia_pago: '', check_pago: false, comentarios: '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const monto = parseFloat(form.precio_unitario) * (parseFloat(form.cantidad) || 1) || 0
@@ -264,6 +354,27 @@ function FormCosto({ onSave, onCancel, dolar }) {
               placeholder="Seleccioná el mes" allowClear />
           </div>
         )}
+        {form.tipo_pago === 'Cta Cte' && (
+          <div className="field">
+            <label className="label">Fecha a pagar</label>
+            <input className="input" type="date" value={form.dia_pago}
+              onChange={e => f('dia_pago', e.target.value)} style={{ width: '100%' }} />
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: form.check_pago ? 'var(--verde-light)' : '#F5F0E4', border: '1px solid', borderColor: form.check_pago ? 'var(--brote)' : 'var(--border)', borderRadius: 8, cursor: 'pointer' }}
+          onClick={() => f('check_pago', !form.check_pago)}>
+          <div style={{ width: 20, height: 20, borderRadius: 5, border: '1.5px solid', borderColor: form.check_pago ? 'var(--pasto)' : '#C8B89A', background: form.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+            {form.check_pago && <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: form.check_pago ? 'var(--musgo)' : 'var(--tierra)' }}>
+              {form.check_pago ? 'Pagado ✓' : 'Marcar como pagado'}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {form.check_pago ? 'Esta factura está pagada' : 'Tocá para registrar el pago'}
+            </div>
+          </div>
+        </div>
         <div className="field">
           <label className="label">Comentarios</label>
           <textarea className="textarea" value={form.comentarios} onChange={e => f('comentarios', e.target.value)} placeholder="Cheque, liquidaciones, etc." style={{ minHeight: 60 }} />
@@ -295,6 +406,7 @@ export default function Costos() {
   const [fCentro, setFCentro] = useState([])
   const [fProv, setFProv] = useState([])
   const [fTipoPago, setFTipoPago] = useState([])
+  const [editando, setEditando] = useState(null)  // id del registro en edición
 
   useEffect(() => { fetchAll() }, [])
   async function fetchAll() {
@@ -482,10 +594,18 @@ export default function Costos() {
               : <table className="c-tbl">
                 <thead><tr>
                   <th>Fecha</th><th>Proveedor</th><th>Descripción</th><th>Centro</th>
-                  <th>Sin IVA</th><th>IVA</th><th>Con IVA</th><th>Factura</th><th>Pago</th><th>Canje mes</th>
+                  <th>Sin IVA</th><th>IVA</th><th>Con IVA</th><th>Factura</th><th>Pago</th><th>Fecha pago</th><th>Pagado</th><th></th>
                 </tr></thead>
                 <tbody>
-                  {filtered.map(c => (
+                  {filtered.map(c => {
+                    const isEdit = editando === c.id
+                    return isEdit ? (
+                      <EditRow key={c.id} costo={c} onSave={async (updated) => {
+                        await db.costos.update(c.id, updated)
+                        setEditando(null)
+                        await fetchAll()
+                      }} onCancel={() => setEditando(null)} />
+                    ) : (
                     <tr key={c.id}>
                       <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.fecha ? new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
                       <td style={{ fontWeight: 500 }}>{c.proveedor}</td>
@@ -496,9 +616,24 @@ export default function Costos() {
                       <td style={{ color: 'var(--arcilla)', fontFamily: 'monospace' }}>{fmtUSD(c.precio_total_con_iva || c.monto_usd)}</td>
                       <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
                       <td style={{ color: 'var(--cielo)' }}>{c.tipo_pago}</td>
-                      <td>{c.mes_canje ? <span className="canje-b">{c.mes_canje}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.dia_pago ? new Date(c.dia_pago + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                      <td>
+                        <div onClick={async () => {
+                          await db.costos.update(c.id, { check_pago: !c.check_pago })
+                          await fetchAll()
+                        }} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid', borderColor: c.check_pago ? 'var(--pasto)' : '#C8B89A', background: c.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {c.check_pago && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <button onClick={() => setEditando(c.id)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--arcilla)' }}>
+                          Editar
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>}
         </div>
