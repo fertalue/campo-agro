@@ -245,12 +245,27 @@ function FormCosto({ onSave, onCancel, dolar }) {
     iva_incluido: false, iva_pct: 0.21,
     factura_nombre: 'ambos', con_sin_factura: 'Con Factura',
     tipo_pago: 'Canje', mes_canje: '', dia_pago: '', check_pago: false, comentarios: '',
+    carga_especial: false, monto_total_factura: '', iva_total_factura: '', otros_imp_total_factura: '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const monto = parseFloat(form.precio_unitario) * (parseFloat(form.cantidad) || 1) || 0
   const usdBase = form.moneda === 'ARS' ? monto / (parseFloat(form.cotizacion_usd) || 1) : monto
   const usdSin = form.iva_incluido ? usdBase / (1 + form.iva_pct) : usdBase
   const usdCon = form.iva_incluido ? usdBase : usdBase * (1 + form.iva_pct)
+
+  // Cálculo carga especial
+  const montoTotalFact   = parseFloat(form.monto_total_factura) || 0
+  const ivaTotalFact     = parseFloat(form.iva_total_factura) || 0
+  const otrosImpTotalFact = parseFloat(form.otros_imp_total_factura) || 0
+  const montoRelacionado = parseFloat(form.precio_unitario) * (parseFloat(form.cantidad) || 1) || 0
+  // Proporción del ítem relacionado sobre el total de la factura (en moneda original)
+  const proporcion       = montoTotalFact > 0 ? montoRelacionado / montoTotalFact : 0
+  const ivaProporcional  = ivaTotalFact * proporcion
+  const otrosImpRelacionado = otrosImpTotalFact * proporcion
+  // Convertir IVA proporcional a USD si corresponde
+  const cotiz = parseFloat(form.cotizacion_usd) || 1
+  const ivaProporcionalUSD = form.moneda === 'ARS' ? ivaProporcional / cotiz : ivaProporcional
+  const otrosImpUSD = form.moneda === 'ARS' ? otrosImpRelacionado / cotiz : otrosImpRelacionado
 
   async function submit(e) {
     e.preventDefault(); setSaving(true)
@@ -266,6 +281,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
       precio_por_unidad_base: puBase,
       monto_usd: usdSin, precio_total_sin_iva: usdSin,
       precio_total_con_iva: usdCon, monto_iva: usdCon - usdSin,
+      otros_impuestos: otrosImpRelacionado || null,
     }
     const { data, error } = await db.costos.insert(payload)
     console.log('INSERT ERROR:', JSON.stringify(error))
@@ -371,6 +387,106 @@ function FormCosto({ onSave, onCancel, dolar }) {
             <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Con IVA ({(form.iva_pct * 100).toFixed(1)}%)</div><div style={{ fontSize: 16, fontWeight: 600, color: 'var(--arcilla)' }}>{fmtUSD(usdCon)}</div></div>
           </div>
         )}
+        {/* Botón carga especial */}
+        <div>
+          <button type="button"
+            onClick={() => f('carga_especial', !form.carga_especial)}
+            style={{ padding: '7px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: form.carga_especial ? '#E4F0F4' : 'transparent', color: form.carga_especial ? '#2C5A6A' : 'var(--arcilla)', borderColor: form.carga_especial ? '#7A9EAD' : 'var(--border)', fontWeight: form.carga_especial ? 500 : 400 }}>
+            {form.carga_especial ? '✓ Factura con ítems mixtos' : '+ Factura con ítems mixtos (combustible, etc.)'}
+          </button>
+        </div>
+
+        {/* Panel carga especial */}
+        {form.carga_especial && (
+          <div style={{ background: '#EAF2F8', border: '1px solid #7A9EAD', borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#2C5A6A', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+              Desglose — ítems relacionados vs no relacionados al campo
+            </div>
+            {/* Tabla */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, color: '#4E7A8A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}></th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#993C1D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}>Ítem relacionado al campo</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#4E7A8A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}>Ítem NO relacionado</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#3B2E1E', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}>Total factura</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Monto */}
+                  <tr>
+                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>Monto</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
+                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block', fontWeight: 600, color: '#3B2E1E' }}>
+                        {montoRelacionado > 0 ? montoRelacionado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        <div style={{ fontSize: 10, color: '#A08060', fontWeight: 400 }}>del precio × cantidad</div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A', borderBottom: '1px solid #D0E8F0' }}>
+                      {montoTotalFact > 0 && montoRelacionado > 0 ? (montoTotalFact - montoRelacionado).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
+                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block' }}>
+                        <input type="number" step="0.01" value={form.monto_total_factura}
+                          onChange={e => f('monto_total_factura', e.target.value)}
+                          placeholder="Total factura"
+                          style={{ width: 110, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' }} />
+                      </div>
+                    </td>
+                  </tr>
+                  {/* IVA */}
+                  <tr>
+                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>IVA</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600, borderBottom: '1px solid #D0E8F0' }}>
+                      {proporcion > 0 && ivaTotalFact > 0 ? (ivaTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                      {proporcion > 0 && ivaTotalFact > 0 && <div style={{ fontSize: 10, color: '#A08060', fontWeight: 400 }}>se registra este valor</div>}
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A', borderBottom: '1px solid #D0E8F0' }}>
+                      {proporcion > 0 && ivaTotalFact > 0 ? (ivaTotalFact * (1 - proporcion)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
+                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block' }}>
+                        <input type="number" step="0.01" value={form.iva_total_factura}
+                          onChange={e => f('iva_total_factura', e.target.value)}
+                          placeholder="IVA total"
+                          style={{ width: 110, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' }} />
+                      </div>
+                    </td>
+                  </tr>
+                  {/* Otros impuestos */}
+                  <tr>
+                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500 }}>Otros impuestos</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600 }}>
+                      {proporcion > 0 && otrosImpTotalFact > 0 ? (otrosImpTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                      {proporcion > 0 && otrosImpTotalFact > 0 && <div style={{ fontSize: 10, color: '#A08060', fontWeight: 400 }}>se registra este valor</div>}
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A' }}>
+                      {proporcion > 0 && otrosImpTotalFact > 0 ? (otrosImpTotalFact * (1 - proporcion)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block' }}>
+                        <input type="number" step="0.01" value={form.otros_imp_total_factura}
+                          onChange={e => f('otros_imp_total_factura', e.target.value)}
+                          placeholder="Otros imp."
+                          style={{ width: 110, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' }} />
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {proporcion > 0 && (
+              <div style={{ marginTop: 10, padding: '8px 12px', background: 'white', borderRadius: 6, border: '1px solid #B8D0D8', fontSize: 12, color: '#2C5A6A' }}>
+                Proporción ítem relacionado: <strong>{(proporcion * 100).toFixed(1)}%</strong> del total factura.
+                Se registrarán: monto <strong>{montoRelacionado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                {ivaTotalFact > 0 && <> · IVA <strong>{(ivaTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>}
+                {otrosImpTotalFact > 0 && <> · Otros imp. <strong>{(otrosImpTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid-2">
           <div className="field">
             <label className="label">IVA</label>
