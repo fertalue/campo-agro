@@ -281,7 +281,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
       precio_por_unidad_base: puBase,
       monto_usd: usdSin, precio_total_sin_iva: usdSin,
       precio_total_con_iva: usdCon, monto_iva: usdCon - usdSin,
-      otros_impuestos: otrosImpRelacionado || null,
+      otros_impuestos: otrosImpUSD || null,
     }
     // Excluir campos temporales del form que no son columnas de la tabla
     const { carga_especial, monto_total_factura, iva_total_factura,
