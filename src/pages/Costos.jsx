@@ -829,7 +829,7 @@ export default function Costos() {
                   <thead><tr>
                     <th>Fecha</th><th>Campaña</th><th>Proveedor</th><th>Producto / Servicio</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
-                    <th>Sin IVA</th><th>IVA %</th><th>Con IVA</th>
+                    <th>Sin IVA</th><th>IVA %</th><th>Con IVA</th><th>+ Otros imp.</th>
                     <th>Moneda</th><th>Tipo pago</th><th>Mes canje</th>
                     <th>Fecha pago</th><th>Pagado</th><th>Quién</th><th>Comentarios</th><th></th>
                   </tr></thead>
@@ -854,6 +854,11 @@ export default function Costos() {
                           <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_sin_iva || c.monto_usd)}</td>
                           <td style={{ color: 'var(--text-muted)' }}>{c.iva_pct ? `${(c.iva_pct * 100).toFixed(1)}%` : '0%'}</td>
                           <td style={{ color: 'var(--arcilla)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_con_iva || c.monto_usd)}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', fontWeight: c.otros_impuestos ? 600 : 400, color: c.otros_impuestos ? 'var(--tierra)' : 'var(--text-muted)' }}>
+                            {c.otros_impuestos
+                              ? fmtUSD((c.precio_total_con_iva || c.monto_usd || 0) + c.otros_impuestos)
+                              : '—'}
+                          </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.moneda}</td>
                           <td style={{ color: 'var(--cielo)', whiteSpace: 'nowrap' }}>{c.tipo_pago}</td>
                           <td>{c.mes_canje ? <span className="canje-b">{c.mes_canje}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}</td>
