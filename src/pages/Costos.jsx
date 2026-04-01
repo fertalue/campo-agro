@@ -283,9 +283,16 @@ function FormCosto({ onSave, onCancel, dolar }) {
       precio_total_con_iva: usdCon, monto_iva: usdCon - usdSin,
       otros_impuestos: otrosImpRelacionado || null,
     }
-    const { data, error } = await db.costos.insert(payload)
+    // Excluir campos temporales del form que no son columnas de la tabla
+    const { carga_especial, monto_total_factura, iva_total_factura,
+            otros_imp_total_factura, ...payloadLimpio } = payload
+    const { data, error } = await db.costos.insert({
+      ...payloadLimpio,
+      carga_especial,
+      otros_impuestos: payload.otros_impuestos || null,
+    })
     console.log('INSERT ERROR:', JSON.stringify(error))
-    console.log('PAYLOAD:', JSON.stringify(payload))
+    console.log('PAYLOAD:', JSON.stringify(payloadLimpio))
     if (!error && foto && data?.[0]?.id) {
       const url = await db.uploadFoto(foto, data[0].id)
       await db.costos.update(data[0].id, { foto_url: url })
