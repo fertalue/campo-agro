@@ -286,10 +286,17 @@ function FormCosto({ onSave, onCancel, dolar }) {
     // Excluir campos temporales del form que no son columnas de la tabla
     const { carga_especial, monto_total_factura, iva_total_factura,
             otros_imp_total_factura, ...payloadLimpio } = payload
+    // Convertir strings vacíos en campos fecha/text a null
+    const clean = (v) => (v === '' || v === undefined) ? null : v
     const { data, error } = await db.costos.insert({
       ...payloadLimpio,
       carga_especial,
       otros_impuestos: payload.otros_impuestos || null,
+      dia_pago:  clean(payloadLimpio.dia_pago),
+      mes_canje: clean(payloadLimpio.mes_canje),
+      marca:     clean(payloadLimpio.marca),
+      presentacion: clean(payloadLimpio.presentacion),
+      unidad_base:  clean(payloadLimpio.unidad_base),
     })
     console.log('INSERT ERROR:', JSON.stringify(error))
     console.log('PAYLOAD:', JSON.stringify(payloadLimpio))
