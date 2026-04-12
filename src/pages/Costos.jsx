@@ -374,33 +374,10 @@ function FormCosto({ onSave, onCancel, dolar }) {
       })
       const mediaType = foto.type || 'image/jpeg'
       setIaMsg('Analizando con IA...')
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      const resp = await fetch('/api/analizar-factura', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: `Analizá esta factura y respondé SOLO con JSON válido (sin markdown), con estos campos exactos:
-{
-  "proveedor": "nombre del proveedor",
-  "fecha": "YYYY-MM-DD",
-  "factura_numero": "número de factura",
-  "producto_servicio": "descripción del producto o servicio principal",
-  "precio_unitario": número o null,
-  "cantidad": número o null,
-  "moneda": "ARS" o "USD oficial",
-  "iva_pct": 0 o 0.105 o 0.21,
-  "iva_incluido": true o false,
-  "monto_total_factura": número total de la factura,
-  "iva_total": número total del IVA o null,
-  "otros_impuestos_total": número de otros impuestos o null,
-  "tiene_items_no_campo": true o false,
-  "comentarios": "observación breve si hay algo relevante" o null
-}` }
-          ]}]
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mediaType })
       })
       const data = await resp.json()
       if (!resp.ok) throw new Error(`API ${resp.status}: ${data?.error?.message || JSON.stringify(data)}`)
