@@ -85,6 +85,19 @@ export const db = {
     insert: (data) => supabase.from('costos').insert(data),
     update: (id, data) => supabase.from('costos').update(data).eq('id', id),
     delete: (id) => supabase.from('costos').delete().eq('id', id),
+    eliminar: async (id, eliminado_por) => {
+      // 1. Buscar el registro
+      const { data: costo, error: errGet } = await supabase.from('costos').select('*').eq('id', id).single()
+      if (errGet || !costo) return { error: errGet || new Error('No encontrado') }
+      // 2. Guardar backup
+      const { error: errBak } = await supabase.from('costos_eliminados').insert({
+        costo_id_original: costo.id, eliminado_por, eliminado_at: new Date().toISOString(),
+        ...Object.fromEntries(Object.entries(costo).filter(([k]) => k !== 'id')),
+      })
+      if (errBak) return { error: errBak }
+      // 3. Borrar original
+      return supabase.from('costos').delete().eq('id', id)
+    },
     byCentro: (campanha) =>
       supabase.from('v_costos_por_centro').select('*').eq('campanha', campanha),
   },

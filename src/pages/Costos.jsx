@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { db, exportCSV, getMaestros } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
 import SearchableSelect from '../components/SearchableSelect'
 
 const CENTROS = ['Producción','Costos únicos','Comercializacion','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
@@ -129,22 +130,31 @@ function monthKey(f) { if (!f) return ''; const d = new Date(f + 'T12:00:00'); r
 function monthLabel(ym) { const [y, m] = ym.split('-'); const n = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']; return `${n[parseInt(m) - 1]} ${y.slice(2)}` }
 
 // ── Fila de edición rápida ───────────────────────────────────────────────────
-function EditRow({ costo, onSave, onCancel }) {
+function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) {
   const [form, setForm] = useState({
+    fecha:             costo.fecha || '',
+    campanha:          costo.campanha || '',
     proveedor:         costo.proveedor || '',
     producto_servicio: costo.producto_servicio || '',
     centro_costos:     costo.centro_costos || '',
-    factura_nombre:    costo.factura_nombre || '',
     factura_numero:    costo.factura_numero || '',
+    factura_nombre:    costo.factura_nombre || '',
+    precio_unitario:   costo.precio_unitario ?? '',
+    iva_pct:           costo.iva_pct ?? 0.21,
+    cantidad:          costo.cantidad ?? '',
+    moneda:            costo.moneda || '',
+    cotizacion_usd:    costo.cotizacion_usd ?? '',
     tipo_pago:         costo.tipo_pago || '',
     mes_canje:         costo.mes_canje || '',
     dia_pago:          costo.dia_pago || '',
     check_pago:        costo.check_pago || false,
+    quien_carga:       costo.quien_carga || '',
     comentarios:       costo.comentarios || '',
-    campanha:          costo.campanha || '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const [saving, setSaving] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function save() {
     setSaving(true)
@@ -152,19 +162,24 @@ function EditRow({ costo, onSave, onCancel }) {
     setSaving(false)
   }
 
-  const cell = { padding: '6px 4px', verticalAlign: 'middle' }
-  const inp = (k, style={}) => (
-    <input value={form[k]} onChange={e => f(k, e.target.value)}
-      style={{ width: '100%', padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', ...style }} />
+  async function doDelete() {
+    setDeleting(true)
+    await onDelete(costo.id, usuario)
+    setDeleting(false)
+  }
+
+  const cell = { padding: '5px 4px', verticalAlign: 'middle' }
+  const si = { padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit', width: '100%' }
+  const inp = (k, type = 'text', style = {}) => (
+    <input type={type} value={form[k]} onChange={e => f(k, e.target.value)}
+      style={{ ...si, ...style }} />
   )
 
-  const si = { padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit', width: '100%' }
-
   return (
-    <tr style={{ background: '#F9F6EE' }}>
-      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{costo.fecha ? new Date(costo.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+    <tr style={{ background: '#FFF9EE' }}>
+      <td style={cell}><input type="date" value={form.fecha} onChange={e => f('fecha', e.target.value)} style={si} /></td>
       <td style={cell}><input value={form.campanha} onChange={e => f('campanha', e.target.value)} style={si} /></td>
-      <td style={cell}><input value={form.proveedor} onChange={e => f('proveedor', e.target.value)} style={{ ...si, fontSize: 12, fontWeight: 500 }} /></td>
+      <td style={cell}><input value={form.proveedor} onChange={e => f('proveedor', e.target.value)} style={{ ...si, fontWeight: 500 }} /></td>
       <td style={cell}><input value={form.producto_servicio} onChange={e => f('producto_servicio', e.target.value)} style={si} /></td>
       <td style={cell}>
         <select value={form.centro_costos} onChange={e => f('centro_costos', e.target.value)} style={si}>
@@ -177,10 +192,16 @@ function EditRow({ costo, onSave, onCancel }) {
           {['Fer','Leo','ambos','Sin factura'].map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
-      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtUSD(costo.precio_total_sin_iva || costo.monto_usd)}</td>
-      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11 }}>{costo.iva_pct ? `${(costo.iva_pct * 100).toFixed(1)}%` : '0%'}</td>
-      <td style={cell} style={{ color: 'var(--arcilla)', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtUSD(costo.precio_total_con_iva || costo.monto_usd)}</td>
-      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11 }}>{costo.moneda}</td>
+      <td style={cell}><input type="number" value={form.precio_unitario} onChange={e => f('precio_unitario', e.target.value)} style={{ ...si, width: 80 }} /></td>
+      <td style={cell}>
+        <select value={form.iva_pct} onChange={e => f('iva_pct', parseFloat(e.target.value))} style={{ ...si, width: 70 }}>
+          <option value={0}>0%</option>
+          <option value={0.105}>10.5%</option>
+          <option value={0.21}>21%</option>
+        </select>
+      </td>
+      <td style={cell}>{fmtUSD(costo.precio_total_con_iva || costo.monto_usd)}</td>
+      <td style={cell}><input value={form.moneda} onChange={e => f('moneda', e.target.value)} style={{ ...si, width: 80 }} /></td>
       <td style={cell}>
         <select value={form.tipo_pago} onChange={e => f('tipo_pago', e.target.value)} style={si}>
           {TIPOS_PAGO.map(o => <option key={o}>{o}</option>)}
@@ -191,9 +212,7 @@ function EditRow({ costo, onSave, onCancel }) {
           placeholder="ej: May 26" style={si} list="meses-canje-list" />
         <datalist id="meses-canje-list">{MESES_CANJE.map(m => <option key={m} value={m} />)}</datalist>
       </td>
-      <td style={cell}>
-        <input type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)} style={si} />
-      </td>
+      <td style={cell}><input type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)} style={si} /></td>
       <td style={cell}>
         <div onClick={() => f('check_pago', !form.check_pago)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid', borderColor: form.check_pago ? 'var(--pasto)' : '#C8B89A', background: form.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -201,14 +220,35 @@ function EditRow({ costo, onSave, onCancel }) {
           </div>
         </div>
       </td>
-      <td style={cell} style={{ color: 'var(--text-muted)', fontSize: 11 }}>{costo.quien_carga}</td>
+      <td style={cell}>
+        <select value={form.quien_carga} onChange={e => f('quien_carga', e.target.value)} style={si}>
+          {['Fer','Leo','Gise'].map(o => <option key={o}>{o}</option>)}
+        </select>
+      </td>
       <td style={cell}><input value={form.comentarios} onChange={e => f('comentarios', e.target.value)} style={si} placeholder="comentarios" /></td>
       <td style={cell}>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={save} disabled={saving} style={{ background: 'var(--pasto)', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
-            {saving ? '...' : 'OK'}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <button onClick={save} disabled={saving}
+            style={{ background: 'var(--pasto)', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {saving ? '...' : '✓ OK'}
           </button>
-          <button onClick={onCancel} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>✕</button>
+          <button onClick={onCancel}
+            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>✕</button>
+          {puedeEliminar && !confirmDel && (
+            <button onClick={() => setConfirmDel(true)}
+              style={{ background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#993C1D', whiteSpace: 'nowrap' }}>🗑</button>
+          )}
+          {puedeEliminar && confirmDel && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#993C1D', whiteSpace: 'nowrap' }}>¿Eliminar?</span>
+              <button onClick={doDelete} disabled={deleting}
+                style={{ background: '#993C1D', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {deleting ? '...' : 'Sí'}
+              </button>
+              <button onClick={() => setConfirmDel(false)}
+                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 6px', fontSize: 11, cursor: 'pointer' }}>No</button>
+            </div>
+          )}
         </div>
       </td>
     </tr>
@@ -695,6 +735,11 @@ export default function Costos({ dolares }) {
   const [ivaMode2, setIvaMode2] = useState('sin')
   const [producto, setProducto] = useState('')
 
+  const { user, puedeVer } = useAuth()
+  const usuario = user?.email || user?.user_metadata?.nombre || 'desconocido'
+  // Puede eliminar: quien tenga el permiso 'eliminar_costos' o sea admin
+  const puedeEliminar = puedeVer ? puedeVer('admin') : false
+
   const [fCampanha, setFCampanha] = useState([])
   const [fMes, setFMes] = useState([])
   const [fNombre, setFNombre] = useState([])
@@ -955,11 +1000,20 @@ export default function Costos({ dolares }) {
                     {filteredDetalle.map(c => {
                       const isEdit = editando === c.id
                       return isEdit ? (
-                        <EditRow key={c.id} costo={c} onSave={async (updated) => {
-                          await db.costos.update(c.id, updated)
-                          setEditando(null)
-                          await fetchAll()
-                        }} onCancel={() => setEditando(null)} />
+                        <EditRow key={c.id} costo={c}
+                          puedeEliminar={puedeEliminar}
+                          usuario={usuario}
+                          onSave={async (updated) => {
+                            await db.costos.update(c.id, updated)
+                            setEditando(null)
+                            await fetchAll()
+                          }}
+                          onDelete={async (id, quien) => {
+                            await db.costos.eliminar(id, quien)
+                            setEditando(null)
+                            await fetchAll()
+                          }}
+                          onCancel={() => setEditando(null)} />
                       ) : (
                         <tr key={c.id}>
                           <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.fecha ? new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
