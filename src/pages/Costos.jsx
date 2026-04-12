@@ -845,13 +845,14 @@ export default function Costos({ dolares }) {
         fecha: monthLabel(monthKey(c.fecha)),
         sin: base,
         con: base * (1 + (c.iva_pct || 0)),
+        total: base * (1 + (c.iva_pct || 0)) + (c.otros_impuestos && c.cantidad ? c.otros_impuestos / c.cantidad : 0),
         unidad: c.unidad_base || c.unidad,
         marca: c.marca || '',
         presentacion: c.presentacion || '',
         proveedor: c.proveedor || '',
       }
     })
-  const maxPr = Math.max(...preciosProd.map(p => ivaMode2 === 'sin' ? p.sin : p.con), 1)
+  const maxPr = Math.max(...preciosProd.map(p => ivaMode2 === 'sin' ? p.sin : ivaMode2 === 'con' ? p.con : p.total), 1)
   const marcasUnicas = [...new Set(preciosProd.map(p => p.marca).filter(Boolean))]
   const MARCA_COLORS = ['#4A7C3F','#7A9EAD','#C8A96E','#A0714F','#8B6B4A','#9DC87A','#B8D0D8']
   const marcaColor = (marca) => {
@@ -1112,6 +1113,7 @@ export default function Costos({ dolares }) {
               <div className="iva-tog">
                 <button className={`iva-b${ivaMode2 === 'sin' ? ' on' : ''}`} onClick={() => setIvaMode2('sin')}>Sin IVA</button>
                 <button className={`iva-b${ivaMode2 === 'con' ? ' on' : ''}`} onClick={() => setIvaMode2('con')}>Con IVA</button>
+                <button className={`iva-b${ivaMode2 === 'total' ? ' on' : ''}`} onClick={() => setIvaMode2('total')}>Total</button>
               </div>
             </div>
           </div>
@@ -1120,7 +1122,7 @@ export default function Costos({ dolares }) {
               : preciosProd.length === 0 ? <div style={{ textAlign: 'center', padding: 32, fontSize: 13, color: 'var(--arcilla)' }}>No hay registros con precio unitario para "{producto}"</div>
                 : <>
                   <div className="c-pt">
-                    {producto} {preciosProd[0]?.unidad ? `— precio por ${preciosProd[0].unidad}` : ''} {ivaMode2 === 'sin' ? '(sin IVA)' : '(con IVA)'}
+                    {producto} {preciosProd[0]?.unidad ? `— precio por ${preciosProd[0].unidad}` : ''} {ivaMode2 === 'sin' ? '(sin IVA)' : ivaMode2 === 'con' ? '(con IVA)' : '(con IVA + otros imp.)'}
                   </div>
                   {marcasUnicas.length > 0 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -1139,20 +1141,20 @@ export default function Costos({ dolares }) {
                     </div>
                   )}
                   {preciosProd.length > 1 && (() => {
-                    const mejor = preciosProd.reduce((a, b) => (ivaMode2==='sin'?a.sin:a.con) <= (ivaMode2==='sin'?b.sin:b.con) ? a : b)
+                    const mejor = preciosProd.reduce((a, b) => (ivaMode2==='sin'?a.sin:ivaMode2==='con'?a.con:a.total) <= (ivaMode2==='sin'?b.sin:ivaMode2==='con'?b.con:b.total) ? a : b)
                     return (
                       <div style={{ marginBottom: 12, padding: '7px 12px', background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 7, fontSize: 12, color: 'var(--musgo)', display: 'flex', gap: 6, alignItems: 'center' }}>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2E4F26" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         Mejor precio: <strong>{mejor.fecha}</strong>
                         {mejor.marca && <> · <strong>{mejor.marca}</strong></>}
                         {mejor.proveedor && <> · {mejor.proveedor}</>}
-                        · <strong>U$S {(ivaMode2==='sin'?mejor.sin:mejor.con).toFixed(4)}/{mejor.unidad}</strong>
+                        · <strong>U$S {(ivaMode2==='sin'?mejor.sin:ivaMode2==='con'?mejor.con:mejor.total).toFixed(4)}/{mejor.unidad}</strong>
                       </div>
                     )
                   })()}
                   {preciosProd.map((p, i) => {
-                    const val = ivaMode2 === 'sin' ? p.sin : p.con
-                    const prev = i > 0 ? (ivaMode2 === 'sin' ? preciosProd[i - 1].sin : preciosProd[i - 1].con) : null
+                    const val = ivaMode2 === 'sin' ? p.sin : ivaMode2 === 'con' ? p.con : p.total
+                    const prev = i > 0 ? (ivaMode2 === 'sin' ? preciosProd[i - 1].sin : ivaMode2 === 'con' ? preciosProd[i - 1].con : preciosProd[i - 1].total) : null
                     const diff = prev ? ((val - prev) / prev * 100) : null
                     const col = marcaColor(p.marca)
                     return <div className="pr-row" key={i}>
