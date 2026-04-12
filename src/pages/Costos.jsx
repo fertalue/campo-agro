@@ -662,6 +662,8 @@ export default function Costos() {
 
   const gm = c => ivaMode === 'sin'
     ? (c.precio_total_sin_iva || c.monto_usd || 0)
+    : ivaMode === 'con'
+    ? (c.precio_total_con_iva || c.monto_usd || 0)
     : (c.precio_total_usd || c.precio_total_con_iva || c.monto_usd || 0)
 
   const total = filtered.reduce((a, b) => a + gm(b), 0)
@@ -733,7 +735,7 @@ export default function Costos() {
         <div>
           <h2>Costos</h2>
           <p style={{ fontSize: 12, color: 'var(--arcilla)', marginTop: 2 }}>
-            {fmtUSD(total)} · {filtered.length} de {costos.length} registros {ivaMode === 'sin' ? '(sin IVA)' : '(con IVA + imp.)'}
+            {fmtUSD(total)} · {filtered.length} de {costos.length} registros {ivaMode === 'sin' ? '(sin IVA)' : ivaMode === 'con' ? '(con IVA)' : '(con IVA + imp.)'}
             {activeFilters > 0 && <span style={{ marginLeft: 6, background: '#F5EDD8', color: '#6B3E22', borderRadius: 10, padding: '1px 7px', fontSize: 11 }}>{activeFilters} filtro{activeFilters !== 1 ? 's' : ''} activo{activeFilters !== 1 ? 's' : ''}</span>}
           </p>
         </div>
@@ -764,7 +766,8 @@ export default function Costos() {
           <div className="c-fl">Monto USD</div>
           <div className="iva-tog">
             <button className={`iva-b${ivaMode === 'sin' ? ' on' : ''}`} onClick={() => setIvaMode('sin')}>Sin IVA</button>
-            <button className={`iva-b${ivaMode === 'con' ? ' on' : ''}`} onClick={() => setIvaMode('con')}>Con IVA + imp.</button>
+            <button className={`iva-b${ivaMode === 'con' ? ' on' : ''}`} onClick={() => setIvaMode('con')}>Con IVA</button>
+            <button className={`iva-b${ivaMode === 'total' ? ' on' : ''}`} onClick={() => setIvaMode('total')}>Total</button>
           </div>
         </div>
       </div>
@@ -869,8 +872,9 @@ export default function Costos() {
                   <thead><tr>
                     <th>Fecha</th><th>Campaña</th><th>Proveedor</th><th>Producto / Servicio</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
-                    <th>Sin IVA</th><th>IVA</th><th>Otros imp.</th><th>Valor total</th>
-                    <th>Moneda</th><th>Tipo pago</th><th>Mes canje</th>
+                    <th>Sin IVA (USD)</th><th>IVA (USD)</th><th>Con IVA (USD)</th><th>Otros imp. (USD)</th><th>Total (USD)</th>
+                    <th>Sin IVA (ARS)</th><th>Con IVA (ARS)</th><th>Otros imp. (ARS)</th><th>Total (ARS)</th>
+                    <th>Cotiz.</th><th>Moneda</th><th>Tipo pago</th><th>Mes canje</th>
                     <th>Fecha pago</th><th>Pagado</th><th>Quién</th><th>Comentarios</th><th></th>
                   </tr></thead>
                   <tbody>
@@ -892,13 +896,19 @@ export default function Costos() {
                           <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.factura_numero || '—'}</td>
                           <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
                           <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_sin_iva || c.monto_usd)}</td>
-                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--arcilla)' }}>{fmtUSD(c.monto_iva)}</td>
-                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.otros_impuestos ? 'var(--cielo)' : 'var(--text-muted)' }}>
-                            {c.otros_impuestos ? fmtUSD(c.otros_impuestos) : '—'}
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--arcilla)' }}>{fmtUSD(c.monto_iva || c.valor_total_iva_usd)}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--arcilla)' }}>{fmtUSD(c.precio_total_con_iva)}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.otros_impuestos > (c.precio_total_con_iva * 2) ? '#993C1D' : c.otros_impuestos ? 'var(--cielo)' : 'var(--text-muted)' }}>
+                            {c.otros_impuestos ? <span title={c.otros_impuestos > (c.precio_total_con_iva * 2) ? '⚠ Valor sospechoso — puede estar en ARS' : ''}>{c.otros_impuestos > (c.precio_total_con_iva * 2) ? '⚠ ' : ''}{fmtUSD(c.otros_impuestos)}</span> : '—'}
                           </td>
                           <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--tierra)' }}>
                             {fmtUSD(c.precio_total_usd || c.precio_total_con_iva || c.monto_usd)}
                           </td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{c.precio_total_sin_iva_ars ? c.precio_total_sin_iva_ars.toLocaleString('es-AR', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{c.precio_total_con_iva_ars ? c.precio_total_con_iva_ars.toLocaleString('es-AR', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{c.valor_total_otros_imp_ars ? c.valor_total_otros_imp_ars.toLocaleString('es-AR', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontWeight: 500 }}>{c.precio_total_ars ? c.precio_total_ars.toLocaleString('es-AR', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.cotizacion_usd ? `${Math.round(c.cotizacion_usd).toLocaleString('es-AR')}` : '—'}</td>
                           <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.moneda}</td>
                           <td style={{ color: 'var(--cielo)', whiteSpace: 'nowrap' }}>{c.tipo_pago}</td>
                           <td>{c.mes_canje ? <span className="canje-b">{c.mes_canje}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}</td>
