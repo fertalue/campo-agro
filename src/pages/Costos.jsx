@@ -257,7 +257,10 @@ function FormCosto({ onSave, onCancel, dolar }) {
     if (!fecha) return
     const { data } = await supabase
       .from('cotizaciones_usd').select('venta').eq('fecha', fecha).eq('tipo', 'oficial').maybeSingle()
-    setForm(p => ({ ...p, cotizacion_usd: data?.venta || '' }))
+    if (data?.venta) {
+      setForm(p => ({ ...p, cotizacion_usd: data.venta }))
+    }
+    // Si no hay cotización guardada para esa fecha, no tocamos el campo — el usuario la ingresa manualmente
   }
 
   // ── Cálculo completo ARS y USD ──────────────────────────────────
@@ -506,12 +509,13 @@ function FormCosto({ onSave, onCancel, dolar }) {
           <div className="field"><label className="label">Cantidad</label>{inp('cantidad', 'number', '0')}</div>
           <div className="field"><label className="label">Moneda</label>{sel('moneda', ['ARS','USD oficial','USD billete'])}</div>
         </div>
-        {form.moneda === 'ARS' && (
+        <div className="grid-2">
           <div className="field">
-            <label className="label">Cotización USD {dolar ? `(oficial hoy: $${dolar?.toLocaleString('es-AR')})` : ''}</label>
+            <label className="label">Cotización USD oficial {dolar ? `(hoy: ${dolar?.toLocaleString('es-AR')})` : ''}</label>
             {inp('cotizacion_usd', 'number', '1478')}
           </div>
-        )}
+          <div className="field"><label className="label">N° comprobante</label>{inp('factura_numero', 'text', 'A-0001-00012345')}</div>
+        </div>
         {(form.precio_unitario && form.cantidad) && (
           <div style={{ background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Sin IVA (USD)</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--musgo)' }}>{fmtUSD(totSinIva_usd)}</div><div style={{ fontSize: 11, color: 'var(--musgo)', marginTop: 2, opacity: 0.7 }}>ARS {totSinIva_ars.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
