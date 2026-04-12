@@ -1,9 +1,6 @@
 [build]
-  command = "npm install && npm run build"
+  command = "npm install --include=dev && npx vite build"
   publish = "dist"
-
-[build.environment]
-  NPM_CONFIG_PRODUCTION = "false"
 
 [functions]
   directory = "netlify/functions"
