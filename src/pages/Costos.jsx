@@ -248,24 +248,58 @@ function FormCosto({ onSave, onCancel, dolar }) {
     carga_especial: false, monto_total_factura: '', iva_total_factura: '', otros_imp_total_factura: '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
-  const monto = parseFloat(form.precio_unitario) * (parseFloat(form.cantidad) || 1) || 0
-  const usdBase = form.moneda === 'ARS' ? monto / (parseFloat(form.cotizacion_usd) || 1) : monto
-  const usdSin = form.iva_incluido ? usdBase / (1 + form.iva_pct) : usdBase
-  const usdCon = form.iva_incluido ? usdBase : usdBase * (1 + form.iva_pct)
+
+  // ── Cálculo completo ARS y USD ──────────────────────────────────
+  const cotiz    = parseFloat(form.cotizacion_usd) || 1
+  const cant     = parseFloat(form.cantidad) || 1
+  const puRaw    = parseFloat(form.precio_unitario) || 0
+  const ivaPct   = form.iva_pct || 0
+
+  // Precio unitario sin IVA (en moneda original)
+  const puSinIva  = form.iva_incluido ? puRaw / (1 + ivaPct) : puRaw
+  const puIva     = puSinIva * ivaPct
+  const puConIva  = puSinIva * (1 + ivaPct)
+
+  // Totales en moneda original
+  const totalSinIva  = puSinIva * cant
+  const totalIva     = totalSinIva * ivaPct
+  const totalConIva  = totalSinIva * (1 + ivaPct)
+
+  // Conversión a ARS y USD
+  const esARS = form.moneda === 'ARS'
+  const toARS = (v) => esARS ? v : v * cotiz
+  const toUSD = (v) => esARS ? v / cotiz : v
+
+  // ARS
+  const puSinIva_ars  = toARS(puSinIva)
+  const puIva_ars     = toARS(puIva)
+  const puConIva_ars  = toARS(puConIva)
+  const totSinIva_ars = toARS(totalSinIva)
+  const totIva_ars    = toARS(totalIva)
+  const totConIva_ars = toARS(totalConIva)
+
+  // USD
+  const puSinIva_usd  = toUSD(puSinIva)
+  const puIva_usd     = toUSD(puIva)
+  const puConIva_usd  = toUSD(puConIva)
+  const totSinIva_usd = toUSD(totalSinIva)
+  const totIva_usd    = toUSD(totalIva)
+  const totConIva_usd = toUSD(totalConIva)
+
+  // Aliases para compatibilidad con código existente
+  const usdSin = totSinIva_usd
+  const usdCon = totConIva_usd
+  const monto  = totalSinIva
 
   // Cálculo carga especial
-  const montoTotalFact   = parseFloat(form.monto_total_factura) || 0
-  const ivaTotalFact     = parseFloat(form.iva_total_factura) || 0
+  const montoTotalFact    = parseFloat(form.monto_total_factura) || 0
+  const ivaTotalFact      = parseFloat(form.iva_total_factura) || 0
   const otrosImpTotalFact = parseFloat(form.otros_imp_total_factura) || 0
-  const montoRelacionado = parseFloat(form.precio_unitario) * (parseFloat(form.cantidad) || 1) || 0
-  // Proporción del ítem relacionado sobre el total de la factura (en moneda original)
-  const proporcion       = montoTotalFact > 0 ? montoRelacionado / montoTotalFact : 0
-  const ivaProporcional  = ivaTotalFact * proporcion
+  const montoRelacionado  = totalSinIva  // ya calculado arriba
+  const proporcion        = montoTotalFact > 0 ? montoRelacionado / montoTotalFact : 0
   const otrosImpRelacionado = otrosImpTotalFact * proporcion
-  // Convertir IVA proporcional a USD si corresponde
-  const cotiz = parseFloat(form.cotizacion_usd) || 1
-  const ivaProporcionalUSD = form.moneda === 'ARS' ? ivaProporcional / cotiz : ivaProporcional
-  const otrosImpUSD = form.moneda === 'ARS' ? otrosImpRelacionado / cotiz : otrosImpRelacionado
+  const otrosImpUSD         = toUSD(otrosImpRelacionado)
+  const otrosImpARS         = toARS(otrosImpRelacionado)
 
   async function submit(e) {
     e.preventDefault(); setSaving(true)
@@ -279,9 +313,27 @@ function FormCosto({ onSave, onCancel, dolar }) {
       cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
       contenido_por_unidad: parseFloat(form.contenido_por_unidad) || null,
       precio_por_unidad_base: puBase,
-      monto_usd: usdSin, precio_total_sin_iva: usdSin,
-      precio_total_con_iva: usdCon, monto_iva: usdCon - usdSin,
-      otros_impuestos: otrosImpUSD || null,
+      // ARS
+      precio_unitario_sin_iva_ars:  puSinIva_ars  || null,
+      valor_unitario_iva_ars:       puIva_ars      || null,
+      precio_unitario_con_iva_ars:  puConIva_ars   || null,
+      precio_total_sin_iva_ars:     totSinIva_ars  || null,
+      valor_total_iva_ars:          totIva_ars      || null,
+      precio_total_con_iva_ars:     totConIva_ars   || null,
+      valor_total_otros_imp_ars:    form.carga_especial ? otrosImpARS : null,
+      precio_total_ars:             (totConIva_ars + (form.carga_especial ? otrosImpARS : 0)) || null,
+      // USD
+      precio_unitario_sin_iva_usd:  puSinIva_usd  || null,
+      valor_unitario_iva_usd:       puIva_usd      || null,
+      precio_unitario_con_iva_usd:  puConIva_usd   || null,
+      precio_total_sin_iva:         totSinIva_usd  || null,
+      monto_usd:                    totSinIva_usd  || null,
+      monto_iva:                    totIva_usd      || null,
+      valor_total_iva_usd:          totIva_usd      || null,
+      precio_total_con_iva:         totConIva_usd   || null,
+      valor_total_otros_imp_usd:    form.carga_especial ? otrosImpUSD : null,
+      otros_impuestos:              form.carga_especial ? otrosImpUSD : null,
+      precio_total_usd:             (totConIva_usd + (form.carga_especial ? otrosImpUSD : 0)) || null,
     }
     // Excluir campos temporales del form que no son columnas de la tabla
     const { carga_especial, monto_total_factura, iva_total_factura,
@@ -396,9 +448,9 @@ function FormCosto({ onSave, onCancel, dolar }) {
           </div>
         )}
         {(form.precio_unitario && form.cantidad) && (
-          <div style={{ background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between' }}>
-            <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Sin IVA</div><div style={{ fontSize: 16, fontWeight: 600, color: 'var(--musgo)' }}>{fmtUSD(usdSin)}</div></div>
-            <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Con IVA ({(form.iva_pct * 100).toFixed(1)}%)</div><div style={{ fontSize: 16, fontWeight: 600, color: 'var(--arcilla)' }}>{fmtUSD(usdCon)}</div></div>
+          <div style={{ background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Sin IVA (USD)</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--musgo)' }}>{fmtUSD(totSinIva_usd)}</div><div style={{ fontSize: 11, color: 'var(--musgo)', marginTop: 2, opacity: 0.7 }}>ARS {totSinIva_ars.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
+            <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Con IVA {(form.iva_pct * 100).toFixed(1)}% (USD)</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--arcilla)' }}>{fmtUSD(totConIva_usd)}</div><div style={{ fontSize: 11, color: 'var(--arcilla)', marginTop: 2, opacity: 0.7 }}>ARS {totConIva_ars.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
           </div>
         )}
         {/* Botón carga especial */}
@@ -416,7 +468,6 @@ function FormCosto({ onSave, onCancel, dolar }) {
             <div style={{ fontSize: 11, fontWeight: 600, color: '#2C5A6A', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
               Desglose — ítems relacionados vs no relacionados al campo
             </div>
-            {/* Tabla */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
@@ -428,7 +479,6 @@ function FormCosto({ onSave, onCancel, dolar }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Monto */}
                   <tr>
                     <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>Monto</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
@@ -449,7 +499,6 @@ function FormCosto({ onSave, onCancel, dolar }) {
                       </div>
                     </td>
                   </tr>
-                  {/* IVA */}
                   <tr>
                     <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>IVA</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600, borderBottom: '1px solid #D0E8F0' }}>
@@ -468,7 +517,6 @@ function FormCosto({ onSave, onCancel, dolar }) {
                       </div>
                     </td>
                   </tr>
-                  {/* Otros impuestos */}
                   <tr>
                     <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500 }}>Otros impuestos</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600 }}>
@@ -572,14 +620,13 @@ export default function Costos() {
   const [ivaMode2, setIvaMode2] = useState('sin')
   const [producto, setProducto] = useState('')
 
-  // Multi-select filters — arrays vacíos = "todos"
   const [fCampanha, setFCampanha] = useState([])
   const [fMes, setFMes] = useState([])
   const [fNombre, setFNombre] = useState([])
   const [fCentro, setFCentro] = useState([])
   const [fProv, setFProv] = useState([])
   const [fTipoPago, setFTipoPago] = useState([])
-  const [editando, setEditando] = useState(null)  // id del registro en edición
+  const [editando, setEditando] = useState(null)
   const [busqueda, setBusqueda] = useState('')
 
   useEffect(() => { fetchAll() }, [])
@@ -603,7 +650,6 @@ export default function Costos() {
     return true
   })
 
-  // Búsqueda global — solo se aplica en tab detalle
   const busquedaLower = busqueda.toLowerCase()
   const filteredDetalle = busqueda ? filtered.filter(c =>
     [c.proveedor, c.producto_servicio, c.centro_costos, c.factura_numero,
@@ -616,7 +662,7 @@ export default function Costos() {
 
   const gm = c => ivaMode === 'sin'
     ? (c.precio_total_sin_iva || c.monto_usd || 0)
-    : (c.precio_total_con_iva || c.monto_usd || 0)
+    : (c.precio_total_usd || c.precio_total_con_iva || c.monto_usd || 0)
 
   const total = filtered.reduce((a, b) => a + gm(b), 0)
   const totFer = filtered.filter(c => c.factura_nombre === 'Fer' || c.factura_nombre === 'ambos').reduce((a, b) => a + gm(b) / (b.factura_nombre === 'ambos' ? 2 : 1), 0)
@@ -664,7 +710,6 @@ export default function Costos() {
   const canjesMes = {}
   canjes.forEach(c => { const m = c.mes_canje || 'Sin fecha'; if (!canjesMes[m]) canjesMes[m] = { total: 0, items: [] }; canjesMes[m].total += gm(c); canjesMes[m].items.push(c) })
 
-  // Cuenta corriente
   const ctacte = filtered.filter(c => c.tipo_pago === 'Cta Cte')
   const ctacteProv = {}
   ctacte.forEach(c => {
@@ -688,7 +733,7 @@ export default function Costos() {
         <div>
           <h2>Costos</h2>
           <p style={{ fontSize: 12, color: 'var(--arcilla)', marginTop: 2 }}>
-            {fmtUSD(total)} · {filtered.length} de {costos.length} registros {ivaMode === 'sin' ? '(sin IVA)' : '(con IVA)'}
+            {fmtUSD(total)} · {filtered.length} de {costos.length} registros {ivaMode === 'sin' ? '(sin IVA)' : '(con IVA + imp.)'}
             {activeFilters > 0 && <span style={{ marginLeft: 6, background: '#F5EDD8', color: '#6B3E22', borderRadius: 10, padding: '1px 7px', fontSize: 11 }}>{activeFilters} filtro{activeFilters !== 1 ? 's' : ''} activo{activeFilters !== 1 ? 's' : ''}</span>}
           </p>
         </div>
@@ -708,7 +753,6 @@ export default function Costos() {
         ))}
       </div>
 
-      {/* Filtros multi-select */}
       <div className="c-filters">
         <MultiSelect label="Campaña" options={CAMPANHAS} selected={fCampanha} onChange={setFCampanha} />
         <MultiSelect label="Año / Mes" options={mesesU.map(m => ({ value: m, label: monthLabel(m) })).map(o => o.value)} selected={fMes} onChange={setFMes} placeholder="Todos los meses" />
@@ -720,12 +764,11 @@ export default function Costos() {
           <div className="c-fl">Monto USD</div>
           <div className="iva-tog">
             <button className={`iva-b${ivaMode === 'sin' ? ' on' : ''}`} onClick={() => setIvaMode('sin')}>Sin IVA</button>
-            <button className={`iva-b${ivaMode === 'con' ? ' on' : ''}`} onClick={() => setIvaMode('con')}>Con IVA</button>
+            <button className={`iva-b${ivaMode === 'con' ? ' on' : ''}`} onClick={() => setIvaMode('con')}>Con IVA + imp.</button>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="c-stats">
         {[
           ['Total costos', fmtk(total), `${filtered.length} facturas`, 100, '#A0714F'],
@@ -742,7 +785,6 @@ export default function Costos() {
         ))}
       </div>
 
-      {/* RESUMEN */}
       {tab === 'resumen' && (
         <div>
           <div className="c-grid2">
@@ -804,10 +846,8 @@ export default function Costos() {
         </div>
       )}
 
-      {/* DETALLE */}
       {tab === 'detalle' && (
         <div>
-          {/* Buscador global */}
           <div style={{ marginBottom: 10, position: 'relative' }}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--arcilla)" strokeWidth="1.5" strokeLinecap="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
               <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
@@ -829,7 +869,7 @@ export default function Costos() {
                   <thead><tr>
                     <th>Fecha</th><th>Campaña</th><th>Proveedor</th><th>Producto / Servicio</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
-                    <th>Sin IVA</th><th>IVA %</th><th>Con IVA</th><th>+ Otros imp.</th>
+                    <th>Sin IVA</th><th>IVA</th><th>Otros imp.</th><th>Valor total</th>
                     <th>Moneda</th><th>Tipo pago</th><th>Mes canje</th>
                     <th>Fecha pago</th><th>Pagado</th><th>Quién</th><th>Comentarios</th><th></th>
                   </tr></thead>
@@ -852,12 +892,12 @@ export default function Costos() {
                           <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.factura_numero || '—'}</td>
                           <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
                           <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_sin_iva || c.monto_usd)}</td>
-                          <td style={{ color: 'var(--text-muted)' }}>{c.iva_pct ? `${(c.iva_pct * 100).toFixed(1)}%` : '0%'}</td>
-                          <td style={{ color: 'var(--arcilla)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtUSD(c.precio_total_con_iva || c.monto_usd)}</td>
-                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', fontWeight: c.otros_impuestos ? 600 : 400, color: c.otros_impuestos ? 'var(--tierra)' : 'var(--text-muted)' }}>
-                            {c.otros_impuestos
-                              ? fmtUSD((c.precio_total_con_iva || c.monto_usd || 0) + c.otros_impuestos)
-                              : '—'}
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'var(--arcilla)' }}>{fmtUSD(c.monto_iva)}</td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.otros_impuestos ? 'var(--cielo)' : 'var(--text-muted)' }}>
+                            {c.otros_impuestos ? fmtUSD(c.otros_impuestos) : '—'}
+                          </td>
+                          <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--tierra)' }}>
+                            {fmtUSD(c.precio_total_usd || c.precio_total_con_iva || c.monto_usd)}
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.moneda}</td>
                           <td style={{ color: 'var(--cielo)', whiteSpace: 'nowrap' }}>{c.tipo_pago}</td>
@@ -887,7 +927,6 @@ export default function Costos() {
         </div>
       )}
 
-      {/* PRECIOS UNITARIOS */}
       {tab === 'precios' && (
         <div>
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -913,7 +952,6 @@ export default function Costos() {
                   <div className="c-pt">
                     {producto} {preciosProd[0]?.unidad ? `— precio por ${preciosProd[0].unidad}` : ''} {ivaMode2 === 'sin' ? '(sin IVA)' : '(con IVA)'}
                   </div>
-                  {/* Leyenda de marcas */}
                   {marcasUnicas.length > 0 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                       {marcasUnicas.map(m => (
@@ -930,7 +968,6 @@ export default function Costos() {
                       )}
                     </div>
                   )}
-                  {/* Mejor precio */}
                   {preciosProd.length > 1 && (() => {
                     const mejor = preciosProd.reduce((a, b) => (ivaMode2==='sin'?a.sin:a.con) <= (ivaMode2==='sin'?b.sin:b.con) ? a : b)
                     return (
@@ -968,10 +1005,8 @@ export default function Costos() {
         </div>
       )}
 
-      {/* CANJES */}
       {tab === 'canjes' && (
         <div>
-          {/* Stats rápidos */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginBottom: 16 }}>
             <div className="c-stat">
               <div className="c-sl">Total canjes</div>
@@ -993,7 +1028,6 @@ export default function Costos() {
             </div>
           </div>
 
-          {/* Por mes con desglose proveedor */}
           {Object.keys(canjesMes).length === 0
             ? <div className="c-panel" style={{ textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>No hay canjes con los filtros actuales</div>
             : Object.entries(canjesMes)
@@ -1017,7 +1051,6 @@ export default function Costos() {
 
                 return (
                   <div key={mes} className="c-panel" style={{ marginBottom: 12 }}>
-                    {/* Header del mes */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className="canje-b" style={{ fontSize: 13, padding: '4px 12px' }}>{mes}</span>
@@ -1038,8 +1071,6 @@ export default function Costos() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Desglose por proveedor */}
                     {Object.entries(provs).sort((a,b) => b[1].total - a[1].total).map(([prov, data]) => (
                       <div key={prov} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#FAF7F0', borderRadius: 7, marginBottom: 6 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1067,10 +1098,8 @@ export default function Costos() {
         </div>
       )}
 
-      {/* CTA CTE */}
       {tab === 'ctacte' && (
         <div>
-          {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginBottom: 16 }}>
             <div className="c-stat">
               <div className="c-sl">Total cta cte</div>
@@ -1092,7 +1121,6 @@ export default function Costos() {
             </div>
           </div>
 
-          {/* Por proveedor */}
           {ctacteProvList.length === 0
             ? <div className="c-panel" style={{ textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>No hay facturas en cuenta corriente</div>
             : ctacteProvList.map(([prov, data]) => {
@@ -1100,7 +1128,6 @@ export default function Costos() {
               const pagado    = data.items.filter(c =>  c.check_pago).reduce((a,b) => a+gm(b), 0)
               return (
                 <div key={prov} className="c-panel" style={{ marginBottom: 12 }}>
-                  {/* Header proveedor */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tierra)', marginBottom: 4 }}>{prov}</div>
@@ -1128,8 +1155,6 @@ export default function Costos() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Facturas del proveedor */}
                   {data.items.sort((a,b) => (a.dia_pago||'').localeCompare(b.dia_pago||'')).map(c => (
                     <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: c.check_pago ? '#F0F7EE' : '#FAF7F0', borderRadius: 7, marginBottom: 5, borderLeft: `3px solid ${c.check_pago ? 'var(--pasto)' : '#F0997B'}` }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
