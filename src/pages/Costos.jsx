@@ -219,6 +219,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const fileRef = useRef()
   const [foto, setFoto] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [leyendoIA, setLeyendoIA] = useState(false)
+  const [iaMsg, setIaMsg] = useState('')
   const [opts, setOpts] = useState({
     proveedor: [], producto: [], marca: [], quien_carga: ['Fer','Leo','Gise'],
     centro_costos: [], concepto: [], unidad: [], moneda: [],
@@ -359,6 +361,72 @@ function FormCosto({ onSave, onCancel, dolar }) {
     setSaving(false); onSave()
   }
 
+  async function leerFactura() {
+    if (!foto) return
+    setLeyendoIA(true)
+    setIaMsg('Leyendo imagen...')
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(r.result.split(',')[1])
+        r.onerror = rej
+        r.readAsDataURL(foto)
+      })
+      const mediaType = foto.type || 'image/jpeg'
+      setIaMsg('Analizando con IA...')
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: `Analizá esta factura y respondé SOLO con JSON válido (sin markdown), con estos campos exactos:
+{
+  "proveedor": "nombre del proveedor",
+  "fecha": "YYYY-MM-DD",
+  "factura_numero": "número de factura",
+  "producto_servicio": "descripción del producto o servicio principal",
+  "precio_unitario": número o null,
+  "cantidad": número o null,
+  "moneda": "ARS" o "USD oficial",
+  "iva_pct": 0 o 0.105 o 0.21,
+  "iva_incluido": true o false,
+  "monto_total_factura": número total de la factura,
+  "iva_total": número total del IVA o null,
+  "otros_impuestos_total": número de otros impuestos o null,
+  "tiene_items_no_campo": true o false,
+  "comentarios": "observación breve si hay algo relevante" o null
+}` }
+          ]}]
+        })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text || ''
+      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+      setIaMsg('✓ Datos cargados')
+      if (parsed.proveedor)       f('proveedor', parsed.proveedor)
+      if (parsed.fecha)           f('fecha', parsed.fecha)
+      if (parsed.factura_numero)  f('factura_numero', parsed.factura_numero)
+      if (parsed.producto_servicio) f('producto_servicio', parsed.producto_servicio)
+      if (parsed.precio_unitario != null) f('precio_unitario', String(parsed.precio_unitario))
+      if (parsed.cantidad != null)        f('cantidad', String(parsed.cantidad))
+      if (parsed.moneda)          f('moneda', parsed.moneda)
+      if (parsed.iva_pct != null) f('iva_pct', parsed.iva_pct)
+      if (parsed.iva_incluido != null) f('iva_incluido', parsed.iva_incluido)
+      if (parsed.monto_total_factura) f('monto_total_factura', String(parsed.monto_total_factura))
+      if (parsed.iva_total)       f('iva_total_factura', String(parsed.iva_total))
+      if (parsed.otros_impuestos_total) f('otros_imp_total_factura', String(parsed.otros_impuestos_total))
+      if (parsed.tiene_items_no_campo) f('carga_especial', true)
+      setTimeout(() => setIaMsg(''), 4000)
+    } catch (err) {
+      setIaMsg('Error al leer — completá manualmente')
+      setTimeout(() => setIaMsg(''), 4000)
+    }
+    setLeyendoIA(false)
+  }
+
   const inp = (k, type, ph) => <input className="input" type={type} value={form[k]} placeholder={ph} onChange={e => f(k, e.target.value)} style={{ width: '100%' }} />
   const sel = (k, fallbackOpts) => (
     <SearchableSelect value={form[k]} onChange={v => f(k, v)}
@@ -374,6 +442,15 @@ function FormCosto({ onSave, onCancel, dolar }) {
           {foto ? `✓ ${foto.name}` : 'Foto de factura (opcional)'}
         </div>
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setFoto(e.target.files[0])} />
+        {foto && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button type="button" onClick={leerFactura} disabled={leyendoIA}
+              style={{ padding: '8px 16px', borderRadius: 7, fontSize: 13, cursor: leyendoIA ? 'wait' : 'pointer', border: '1px solid', fontFamily: 'inherit', background: leyendoIA ? '#F5F0E4' : 'var(--pasto)', color: leyendoIA ? 'var(--arcilla)' : '#F5F0E4', borderColor: leyendoIA ? 'var(--border)' : 'var(--pasto)', fontWeight: 500, transition: 'all .2s' }}>
+              {leyendoIA ? '⏳ Analizando...' : '✨ Analizar con IA'}
+            </button>
+            {iaMsg && <span style={{ fontSize: 12, color: iaMsg.startsWith('✓') ? 'var(--musgo)' : iaMsg.startsWith('Error') ? '#993C1D' : 'var(--arcilla)' }}>{iaMsg}</span>}
+          </div>
+        )}
         <div className="grid-2">
           <div className="field"><label className="label">Fecha</label>{inp('fecha', 'date')}</div>
           <div className="field"><label className="label">Quién carga</label>{sel('quien_carga', ['Fer','Leo','Gise'])}</div>
