@@ -144,23 +144,6 @@ function EditRow({ costo, onSave, onCancel }) {
     campanha:          costo.campanha || '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  // Cuando cambia la fecha, buscar cotización de ese día
-  async function fetchCotizFecha(fecha) {
-    if (!fecha) return
-    const { data } = await supabase
-      .from('cotizaciones_usd')
-      .select('venta')
-      .eq('fecha', fecha)
-      .eq('tipo', 'oficial')
-      .maybeSingle()
-    if (data?.venta) {
-      setForm(p => ({ ...p, cotizacion_usd: data.venta }))
-    } else {
-      // No hay cotización guardada para esa fecha, dejar en blanco para que ingrese manualmente
-      setForm(p => ({ ...p, cotizacion_usd: '' }))
-    }
-  }
   const [saving, setSaving] = useState(false)
 
   async function save() {
@@ -268,6 +251,14 @@ function FormCosto({ onSave, onCancel, dolar }) {
     carga_especial: false, monto_total_factura: '', iva_total_factura: '', otros_imp_total_factura: '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // Cotización del día de la factura
+  async function fetchCotizFecha(fecha) {
+    if (!fecha) return
+    const { data } = await supabase
+      .from('cotizaciones_usd').select('venta').eq('fecha', fecha).eq('tipo', 'oficial').maybeSingle()
+    setForm(p => ({ ...p, cotizacion_usd: data?.venta || '' }))
+  }
 
   // ── Cálculo completo ARS y USD ──────────────────────────────────
   const cotiz    = parseFloat(form.cotizacion_usd) || 1
