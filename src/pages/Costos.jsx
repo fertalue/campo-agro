@@ -403,6 +403,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
         })
       })
       const data = await resp.json()
+      if (!resp.ok) throw new Error(`API ${resp.status}: ${data?.error?.message || JSON.stringify(data)}`)
       const text = data.content?.[0]?.text || ''
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
       setIaMsg('✓ Datos cargados')
@@ -421,8 +422,9 @@ function FormCosto({ onSave, onCancel, dolar }) {
       if (parsed.tiene_items_no_campo) f('carga_especial', true)
       setTimeout(() => setIaMsg(''), 4000)
     } catch (err) {
-      setIaMsg('Error al leer — completá manualmente')
-      setTimeout(() => setIaMsg(''), 4000)
+      console.error('IA error:', err)
+      setIaMsg('Error: ' + (err?.message || JSON.stringify(err)))
+      setTimeout(() => setIaMsg(''), 8000)
     }
     setLeyendoIA(false)
   }
