@@ -177,22 +177,31 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
 
   return (
     <tr style={{ background: '#FFF9EE' }}>
+      {/* 1 Fecha */}
       <td style={cell}><input type="date" value={form.fecha} onChange={e => f('fecha', e.target.value)} style={si} /></td>
+      {/* 2 Campaña */}
       <td style={cell}><input value={form.campanha} onChange={e => f('campanha', e.target.value)} style={si} /></td>
+      {/* 3 Proveedor */}
       <td style={cell}><input value={form.proveedor} onChange={e => f('proveedor', e.target.value)} style={{ ...si, fontWeight: 500 }} /></td>
+      {/* 4 Producto */}
       <td style={cell}><input value={form.producto_servicio} onChange={e => f('producto_servicio', e.target.value)} style={si} /></td>
+      {/* 5 Centro */}
       <td style={cell}>
         <select value={form.centro_costos} onChange={e => f('centro_costos', e.target.value)} style={si}>
           {CENTROS.map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
+      {/* 6 N° Factura */}
       <td style={cell}><input value={form.factura_numero} onChange={e => f('factura_numero', e.target.value)} style={si} placeholder="N° factura" /></td>
+      {/* 7 Factura a nombre de */}
       <td style={cell}>
         <select value={form.factura_nombre} onChange={e => f('factura_nombre', e.target.value)} style={si}>
           {['Fer','Leo','ambos','Sin factura'].map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
-      <td style={cell}><input type="number" value={form.precio_unitario} onChange={e => f('precio_unitario', e.target.value)} style={{ ...si, width: 80 }} /></td>
+      {/* 8 Sin IVA (USD) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtUSD(costo.precio_total_sin_iva || costo.monto_usd)}</td>
+      {/* 9 IVA (USD) — editable como % */}
       <td style={cell}>
         <select value={form.iva_pct} onChange={e => f('iva_pct', parseFloat(e.target.value))} style={{ ...si, width: 70 }}>
           <option value={0}>0%</option>
@@ -200,19 +209,39 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
           <option value={0.21}>21%</option>
         </select>
       </td>
-      <td style={cell}>{fmtUSD(costo.precio_total_con_iva || costo.monto_usd)}</td>
-      <td style={cell}><input value={form.moneda} onChange={e => f('moneda', e.target.value)} style={{ ...si, width: 80 }} /></td>
+      {/* 10 Con IVA (USD) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--arcilla)', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtUSD(costo.precio_total_con_iva || costo.monto_usd)}</td>
+      {/* 11 Otros imp. (USD) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11 }}>{costo.otros_impuestos ? fmtUSD(costo.otros_impuestos) : '—'}</td>
+      {/* 12 Total (USD) — solo lectura */}
+      <td style={{ ...cell, fontSize: 11, fontWeight: 600 }}>{fmtUSD(costo.precio_total_usd || costo.precio_total_con_iva || costo.monto_usd)}</td>
+      {/* 13 Sin IVA (ARS) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11 }}>{costo.precio_total_sin_iva_ars ? costo.precio_total_sin_iva_ars.toLocaleString('es-AR', {minimumFractionDigits:0,maximumFractionDigits:0}) : '—'}</td>
+      {/* 14 Con IVA (ARS) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11 }}>{costo.precio_total_con_iva_ars ? costo.precio_total_con_iva_ars.toLocaleString('es-AR', {minimumFractionDigits:0,maximumFractionDigits:0}) : '—'}</td>
+      {/* 15 Otros imp. (ARS) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11 }}>{costo.valor_total_otros_imp_ars ? costo.valor_total_otros_imp_ars.toLocaleString('es-AR', {minimumFractionDigits:0,maximumFractionDigits:0}) : '—'}</td>
+      {/* 16 Total (ARS) — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11 }}>{costo.precio_total_ars ? costo.precio_total_ars.toLocaleString('es-AR', {minimumFractionDigits:0,maximumFractionDigits:0}) : '—'}</td>
+      {/* 17 Cotiz. — solo lectura */}
+      <td style={{ ...cell, color: 'var(--text-muted)', fontSize: 11 }}>{costo.cotizacion_usd ? Math.round(costo.cotizacion_usd).toLocaleString('es-AR') : '—'}</td>
+      {/* 18 Moneda */}
+      <td style={cell}><input value={form.moneda} onChange={e => f('moneda', e.target.value)} style={{ ...si, width: 70 }} /></td>
+      {/* 19 Tipo pago */}
       <td style={cell}>
         <select value={form.tipo_pago} onChange={e => f('tipo_pago', e.target.value)} style={si}>
           {TIPOS_PAGO.map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
+      {/* 20 Mes canje */}
       <td style={cell}>
         <input value={form.mes_canje} onChange={e => f('mes_canje', e.target.value)}
           placeholder="ej: May 26" style={si} list="meses-canje-list" />
         <datalist id="meses-canje-list">{MESES_CANJE.map(m => <option key={m} value={m} />)}</datalist>
       </td>
+      {/* 21 Fecha pago */}
       <td style={cell}><input type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)} style={si} /></td>
+      {/* 22 Pagado */}
       <td style={cell}>
         <div onClick={() => f('check_pago', !form.check_pago)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid', borderColor: form.check_pago ? 'var(--pasto)' : '#C8B89A', background: form.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -220,12 +249,15 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
           </div>
         </div>
       </td>
+      {/* 23 Quién */}
       <td style={cell}>
         <select value={form.quien_carga} onChange={e => f('quien_carga', e.target.value)} style={si}>
           {['Fer','Leo','Gise'].map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
+      {/* 24 Comentarios */}
       <td style={cell}><input value={form.comentarios} onChange={e => f('comentarios', e.target.value)} style={si} placeholder="comentarios" /></td>
+      {/* 25 Acciones */}
       <td style={cell}>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           <button onClick={save} disabled={saving}
@@ -236,13 +268,13 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
             style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>✕</button>
           {puedeEliminar && !confirmDel && (
             <button onClick={() => setConfirmDel(true)}
-              style={{ background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#993C1D', whiteSpace: 'nowrap' }}>🗑</button>
+              style={{ background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#993C1D' }}>🗑</button>
           )}
           {puedeEliminar && confirmDel && (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: '#993C1D', whiteSpace: 'nowrap' }}>¿Eliminar?</span>
               <button onClick={doDelete} disabled={deleting}
-                style={{ background: '#993C1D', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                style={{ background: '#993C1D', color: 'white', border: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
                 {deleting ? '...' : 'Sí'}
               </button>
               <button onClick={() => setConfirmDel(false)}
