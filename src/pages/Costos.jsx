@@ -252,6 +252,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  const [cotizMsg, setCotizMsg] = useState('')
+
   // Cotización del día de la factura
   async function fetchCotizFecha(fecha) {
     if (!fecha) return
@@ -259,8 +261,11 @@ function FormCosto({ onSave, onCancel, dolar }) {
       .from('cotizaciones_usd').select('venta').eq('fecha', fecha).eq('tipo', 'oficial').maybeSingle()
     if (data?.venta) {
       setForm(p => ({ ...p, cotizacion_usd: data.venta }))
+      setCotizMsg('')
+    } else {
+      setForm(p => ({ ...p, cotizacion_usd: '' }))
+      setCotizMsg('⚠ No hay cotización guardada para esta fecha. Ingresá el valor manualmente.')
     }
-    // Si no hay cotización guardada para esa fecha, no tocamos el campo — el usuario la ingresa manualmente
   }
 
   // ── Cálculo completo ARS y USD ──────────────────────────────────
@@ -513,6 +518,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
           <div className="field">
             <label className="label">Cotización USD oficial {dolar ? `(hoy: ${dolar?.toLocaleString('es-AR')})` : ''}</label>
             {inp('cotizacion_usd', 'number', '1478')}
+            {cotizMsg && <div style={{ fontSize: 11, color: '#993C1D', marginTop: 4 }}>{cotizMsg}</div>}
           </div>
           <div className="field"><label className="label">N° comprobante</label>{inp('factura_numero', 'text', 'A-0001-00012345')}</div>
         </div>
@@ -679,11 +685,11 @@ function FormCosto({ onSave, onCancel, dolar }) {
 }
 
 // ── Componente principal ─────────────────────────────────────────────────────
-export default function Costos() {
+export default function Costos({ dolares }) {
   const [costos, setCostos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [dolar, setDolar] = useState(null)
+  const dolar = dolares?.oficial?.venta ?? null
   const [tab, setTab] = useState('resumen')
   const [ivaMode, setIvaMode] = useState('sin')
   const [ivaMode2, setIvaMode2] = useState('sin')
@@ -705,7 +711,6 @@ export default function Costos() {
     setCostos(data || [])
     setLoading(false)
   }
-  useEffect(() => { db.cotizacion.hoy().then(v => v && setDolar(v)) }, [])
 
   const match = (arr, val) => arr.length === 0 || arr.includes(val)
 

@@ -124,7 +124,7 @@ function AppShell() {
           </div>
         </header>
         <main style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px' : '20px 24px' }}>
-          <PageComponent />
+          <PageComponent dolares={dolares} />
         </main>
         {isMobile && (
           <nav style={{ borderTop: '1px solid var(--border)', background: 'var(--blanco)', overflowX: 'auto', display: 'flex', padding: '6px 0 10px' }}>
