@@ -1,5 +1,4 @@
 [build]
-  base = "campo-agro"
   command = "npm run build"
   publish = "dist"
 
