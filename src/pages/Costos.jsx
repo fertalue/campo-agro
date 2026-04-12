@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { db, exportCSV, getMaestros } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import SearchableSelect from '../components/SearchableSelect'
 
 const CENTROS = ['Producción','Costos únicos','Comercializacion','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
@@ -143,6 +144,23 @@ function EditRow({ costo, onSave, onCancel }) {
     campanha:          costo.campanha || '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // Cuando cambia la fecha, buscar cotización de ese día
+  async function fetchCotizFecha(fecha) {
+    if (!fecha) return
+    const { data } = await supabase
+      .from('cotizaciones_usd')
+      .select('venta')
+      .eq('fecha', fecha)
+      .eq('tipo', 'oficial')
+      .maybeSingle()
+    if (data?.venta) {
+      setForm(p => ({ ...p, cotizacion_usd: data.venta }))
+    } else {
+      // No hay cotización guardada para esa fecha, dejar en blanco para que ingrese manualmente
+      setForm(p => ({ ...p, cotizacion_usd: '' }))
+    }
+  }
   const [saving, setSaving] = useState(false)
 
   async function save() {
@@ -385,7 +403,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
       setIaMsg('✓ Datos cargados')
       if (parsed.proveedor)       f('proveedor', parsed.proveedor)
-      if (parsed.fecha)           f('fecha', parsed.fecha)
+      if (parsed.fecha)           { f('fecha', parsed.fecha); fetchCotizFecha(parsed.fecha) }
       if (parsed.factura_numero)  f('factura_numero', parsed.factura_numero)
       if (parsed.producto_servicio) f('producto_servicio', parsed.producto_servicio)
       if (parsed.precio_unitario != null) f('precio_unitario', String(parsed.precio_unitario))
@@ -431,7 +449,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
           </div>
         )}
         <div className="grid-2">
-          <div className="field"><label className="label">Fecha</label>{inp('fecha', 'date')}</div>
+          <div className="field"><label className="label">Fecha</label><input className="input" type="date" value={form.fecha} onChange={e => { f('fecha', e.target.value); fetchCotizFecha(e.target.value) }} style={{ width: '100%' }} /></div>
           <div className="field"><label className="label">Quién carga</label>{sel('quien_carga', ['Fer','Leo','Gise'])}</div>
         </div>
         <div className="grid-2">

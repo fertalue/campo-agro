@@ -76,7 +76,7 @@ export const db = {
   // Costos
   costos: {
     list: (filters = {}) => {
-      let q = supabase.from('costos').select('*').order('fecha', { ascending: false })
+      let q = supabase.from('costos').select('*').order('fecha', { ascending: false }).order('created_at', { ascending: false })
       if (filters.campanha)     q = q.eq('campanha', filters.campanha)
       if (filters.centro)       q = q.eq('centro_costos', filters.centro)
       if (filters.quien_carga)  q = q.eq('quien_carga', filters.quien_carga)
