@@ -103,6 +103,18 @@ function MultiSelect({ label, options, selected, onChange, placeholder = 'Todos'
       </div>
       {open && (
         <div className="ms-dropdown">
+          <div className="ms-item" onClick={() => {
+            if (selected.length === options.length) onChange([])
+            else onChange([...options])
+          }}>
+            <div className="ms-check" style={{ background: selected.length === options.length ? '#4A7C3F' : 'transparent', borderColor: selected.length === options.length ? '#4A7C3F' : '#C8B89A', color: '#fff' }}>
+              {selected.length === options.length ? '✓' : selected.length > 0 ? '–' : ''}
+            </div>
+            <span style={{ fontWeight: 500, color: '#4A7C3F', fontSize: 11 }}>
+              {selected.length === options.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+            </span>
+          </div>
+          <div className="ms-sep" />
           {options.map(opt => (
             <div key={opt} className={`ms-item${selected.includes(opt) ? ' sel' : ''}`} onClick={() => toggle(opt)}>
               <div className="ms-check">{selected.includes(opt) ? '✓' : ''}</div>
