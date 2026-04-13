@@ -196,7 +196,10 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
       {/* 7 Factura a nombre de */}
       <td style={cell}>
         <select value={form.factura_nombre} onChange={e => f('factura_nombre', e.target.value)} style={si}>
-          {['Fer','Leo','ambos','Sin factura'].map(o => <option key={o}>{o}</option>)}
+          {(['Fer','Leo','ambos','Sin factura','Consumidor final'].includes(form.factura_nombre)
+            ? ['Fer','Leo','ambos','Sin factura','Consumidor final']
+            : ['Fer','Leo','ambos','Sin factura',form.factura_nombre].filter(Boolean)
+          ).map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
       {/* 8 Sin IVA (USD) — solo lectura */}
@@ -1037,7 +1040,19 @@ export default function Costos({ dolares }) {
                           puedeEliminar={puedeEliminar}
                           usuario={usuario}
                           onSave={async (updated) => {
-                            await db.costos.update(c.id, updated)
+                            const cleanVal = v => (v === '' || v === undefined) ? null : v
+                            const cleanNum = v => { const n = parseFloat(v); return isNaN(n) ? null : n }
+                            const payload = {
+                              ...updated,
+                              precio_unitario: cleanNum(updated.precio_unitario),
+                              cantidad:        cleanNum(updated.cantidad),
+                              cotizacion_usd:  cleanNum(updated.cotizacion_usd),
+                              iva_pct:         updated.iva_pct ?? 0,
+                              dia_pago:        cleanVal(updated.dia_pago),
+                              mes_canje:       cleanVal(updated.mes_canje),
+                              cheque_emitido:  cleanVal(updated.cheque_emitido),
+                            }
+                            await db.costos.update(c.id, payload)
                             setEditando(null)
                             await fetchAll()
                           }}
