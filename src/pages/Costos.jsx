@@ -135,7 +135,7 @@ function MultiSelect({ label, options, selected, onChange, placeholder = 'Todos'
 
 function fmtUSD(n, dec = 2) {
   if (n == null || isNaN(n)) return '—'
-  return 'U$S ' + parseFloat(n).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+  return 'USD ' + parseFloat(n).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 function fmtk(n) { return fmtUSD(n, 2) }
 function monthKey(f) { if (!f) return ''; const d = new Date(f + 'T12:00:00'); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
