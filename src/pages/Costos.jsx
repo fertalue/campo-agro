@@ -505,7 +505,16 @@ function FormCosto({ onSave, onCancel, dolar }) {
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
       setIaMsg('✓ Datos cargados')
       if (parsed.proveedor)       f('proveedor', parsed.proveedor)
-      if (parsed.fecha)           { f('fecha', parsed.fecha); fetchCotizFecha(parsed.fecha) }
+      if (parsed.fecha) {
+        // Validar que el año sea razonable (2024-2030)
+        const yearParsed = parseInt(parsed.fecha.slice(0, 4))
+        if (yearParsed >= 2024 && yearParsed <= 2030) {
+          f('fecha', parsed.fecha)
+          fetchCotizFecha(parsed.fecha)
+        } else {
+          setIaMsg(`⚠ La IA detectó año ${yearParsed} — parece incorrecto. Verificá la fecha manualmente.`)
+        }
+      }
       if (parsed.factura_numero)  f('factura_numero', parsed.factura_numero)
       if (parsed.producto_servicio) f('producto_servicio', parsed.producto_servicio)
       if (parsed.precio_unitario != null) f('precio_unitario', String(parsed.precio_unitario))
@@ -1089,7 +1098,11 @@ export default function Costos({ dolares }) {
                             await fetchAll()
                           }}
                           onDelete={async (id, quien) => {
-                            await db.costos.eliminar(id, quien)
+                            const result = await db.costos.eliminar(id, quien)
+                            if (result?.error) {
+                              alert('❌ Error al eliminar: ' + (result.error?.message || JSON.stringify(result.error)))
+                              return
+                            }
                             setEditando(null)
                             await fetchAll()
                           }}

@@ -20,23 +20,31 @@ export default async (req) => {
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: `Analizá esta factura y respondé SOLO con JSON válido (sin markdown), con estos campos exactos:
+            { type: 'text', text: `Analizá esta factura argentina y respondé SOLO con JSON válido (sin markdown), con estos campos exactos:
 {
   "proveedor": "nombre del proveedor",
   "fecha": "YYYY-MM-DD",
-  "factura_numero": "número de factura",
+  "factura_numero": "número de factura o tique",
   "producto_servicio": "descripción del producto o servicio principal",
   "precio_unitario": número o null,
   "cantidad": número o null,
   "moneda": "ARS" o "USD oficial",
   "iva_pct": 0 o 0.105 o 0.21,
   "iva_incluido": true o false,
-  "monto_total_factura": número total de la factura,
+  "monto_total_factura": número total de la factura sin puntos de miles (ej: 315866.18),
   "iva_total": número total del IVA o null,
   "otros_impuestos_total": número de otros impuestos o null,
   "tiene_items_no_campo": true o false,
   "comentarios": "observación breve si hay algo relevante" o null
-}` }
+}
+
+REGLAS CRÍTICAS:
+- Las facturas son de Argentina, el año SIEMPRE es 2024, 2025 o 2026. NUNCA uses 2020, 2021, 2022, 2023.
+- El formato de fecha en facturas argentinas es DD/MM/YYYY. Ejemplo: "09/04/2026" → fecha: "2026-04-09".
+- Si ves "09/04/26" o "09/04/2026", la fecha es 2026-04-09, NO 2020-04-09.
+- Los números en Argentina usan punto como separador de miles y coma para decimales. Ejemplo: "315.866,18" → 315866.18.
+- Si hay múltiples productos (ej: combustible), en producto_servicio escribí el primero o el más importante.
+- monto_total_factura es el TOTAL final de la factura (lo que se paga).` }
           ]
         }]
       })
