@@ -89,13 +89,24 @@ export const db = {
       // 1. Buscar el registro
       const { data: costo, error: errGet } = await supabase.from('costos').select('*').eq('id', id).single()
       if (errGet || !costo) return { error: errGet || new Error('No encontrado') }
-      // 2. Guardar backup
-      const { error: errBak } = await supabase.from('costos_eliminados').insert({
-        costo_id_original: costo.id, eliminado_por, eliminado_at: new Date().toISOString(),
-        ...Object.fromEntries(Object.entries(costo).filter(([k]) => k !== 'id')),
-      })
-      if (errBak) return { error: errBak }
-      // 3. Borrar original
+      // 2. Intentar backup (opcional — si falla igual borramos)
+      const camposBackup = [
+        'fecha','quien_carga','campanha','centro_costos','concepto','proveedor','producto_servicio',
+        'precio_unitario','unidad','cantidad','moneda','cotizacion_usd','iva_pct','iva_incluido',
+        'factura_nombre','factura_numero','tipo_pago','mes_canje','dia_pago','check_pago','comentarios',
+        'marca','presentacion','contenido_por_unidad','unidad_base','precio_por_unidad_base',
+        'carga_especial','otros_impuestos','monto_usd','monto_iva','precio_total_sin_iva',
+        'precio_total_con_iva','precio_total_usd','precio_unitario_sin_iva_ars','valor_unitario_iva_ars',
+        'precio_unitario_con_iva_ars','precio_total_sin_iva_ars','valor_total_iva_ars',
+        'precio_total_con_iva_ars','valor_total_otros_imp_ars','precio_total_ars',
+        'precio_unitario_sin_iva_usd','valor_unitario_iva_usd','precio_unitario_con_iva_usd',
+        'valor_total_iva_usd','valor_total_otros_imp_usd','foto_url','created_at',
+        'quien_pago','cheque_emitido',
+      ]
+      const backupData = { costo_id_original: costo.id, eliminado_por, eliminado_at: new Date().toISOString() }
+      camposBackup.forEach(k => { if (k in costo) backupData[k] = costo[k] })
+      try { await supabase.from('costos_eliminados').insert(backupData) } catch (e) { console.warn('Backup fallido (igual se borra):', e) }
+      // 3. Borrar original siempre
       return supabase.from('costos').delete().eq('id', id)
     },
     byCentro: (campanha) =>

@@ -408,7 +408,18 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const otrosImpARS         = toARS(otrosImpRelacionado)
 
   async function submit(e) {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    // Validaciones antes de guardar
+    const esARS_check = form.moneda === 'ARS'
+    if (esARS_check && (!form.cotizacion_usd || parseFloat(form.cotizacion_usd) <= 0)) {
+      alert('⚠️ Falta la cotización USD. Ingresá el valor del dólar oficial para poder calcular el monto en USD.')
+      return
+    }
+    if (!form.precio_unitario || parseFloat(form.precio_unitario) <= 0) {
+      alert('⚠️ Falta el precio unitario.')
+      return
+    }
+    setSaving(true)
     const puBase = form.precio_unitario && form.contenido_por_unidad
       ? (parseFloat(form.precio_unitario) / parseFloat(form.contenido_por_unidad))
       : parseFloat(form.precio_unitario) || null
@@ -458,6 +469,11 @@ function FormCosto({ onSave, onCancel, dolar }) {
     })
     console.log('INSERT ERROR:', JSON.stringify(error))
     console.log('PAYLOAD:', JSON.stringify(payloadLimpio))
+    if (error) {
+      setSaving(false)
+      alert('❌ Error al guardar: ' + (error.message || JSON.stringify(error)))
+      return
+    }
     if (!error && foto && data?.[0]?.id) {
       const url = await db.uploadFoto(foto, data[0].id)
       await db.costos.update(data[0].id, { foto_url: url })
@@ -1064,7 +1080,11 @@ export default function Costos({ dolares }) {
                               mes_canje:       cleanVal(updated.mes_canje),
                               cheque_emitido:  cleanVal(updated.cheque_emitido),
                             }
-                            await db.costos.update(c.id, payload)
+                            const { error } = await db.costos.update(c.id, payload)
+                            if (error) {
+                              alert('❌ Error al guardar: ' + (error.message || JSON.stringify(error)))
+                              return
+                            }
                             setEditando(null)
                             await fetchAll()
                           }}
