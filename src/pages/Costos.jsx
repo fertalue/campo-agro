@@ -698,8 +698,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
         )}
         {/* ── Ítems adicionales de la misma factura ──────────────────── */}
         {extraItems.length > 0 && (
-          <div style={{ background: '#F5F0E8', border: '1px solid #E8D5A3', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, padding: '6px 10px', background: '#EDE0C8', fontSize: 10, fontWeight: 600, color: '#7A6040', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ background: '#F5F0E8', border: '1px solid #E8D5A3', borderRadius: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, padding: '6px 10px', background: '#EDE0C8', borderRadius: '8px 8px 0 0', fontSize: 10, fontWeight: 600, color: '#7A6040', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               <span>Producto / Servicio</span><span>Precio</span><span>Cant.</span><span>Unidad</span><span>IVA</span><span style={{ textAlign: 'right' }}>Sub. USD</span><span></span>
             </div>
             {extraItems.map((item, idx) => {
