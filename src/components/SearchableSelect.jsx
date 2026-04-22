@@ -15,15 +15,26 @@ const CSS = `
 .ss-item{padding:8px 14px;font-size:13px;color:#3B2E1E;cursor:pointer;transition:background .1s;}
 .ss-item:hover{background:#EDE0C8;}
 .ss-item.selected{background:#EBF4E8;color:#2E4F26;font-weight:500;}
-.ss-empty{padding:12px 14px;font-size:12px;color:#A08060;text-align:center;}
+.ss-empty{padding:10px 14px;font-size:12px;color:#A08060;text-align:center;}
+.ss-add{padding:8px 14px;font-size:12px;color:#4A7C3F;cursor:pointer;border-top:1px solid #EDE0C8;font-weight:500;display:flex;align-items:center;gap:6px;}
+.ss-add:hover{background:#EBF4E8;}
+.ss-add-icon{width:18px;height:18px;border-radius:50%;background:#4A7C3F;color:white;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;line-height:1;}
 .ss-clear{padding:7px 14px;font-size:11px;color:#A0714F;cursor:pointer;border-top:1px solid #EDE0C8;text-align:center;}
 .ss-clear:hover{background:#F5EDD8;}
 `
 
-export default function SearchableSelect({ value, onChange, options = [], placeholder = 'Seleccioná...', allowClear = false }) {
+export default function SearchableSelect({
+  value,
+  onChange,
+  options = [],
+  placeholder = 'Seleccioná...',
+  allowClear = false,
+  onAddNew = null,   // fn(valor) → llamado cuando el usuario quiere agregar un valor nuevo
+}) {
   const [open, setOpen]     = useState(false)
   const [search, setSearch] = useState('')
-  const ref  = useRef()
+  const [adding, setAdding] = useState(false)
+  const ref    = useRef()
   const inpRef = useRef()
 
   useEffect(() => {
@@ -44,8 +55,21 @@ export default function SearchableSelect({ value, onChange, options = [], placeh
     o.toLowerCase().includes(search.toLowerCase())
   )
 
+  const trimmed = search.trim()
+  const exactMatch = options.some(o => o.toLowerCase() === trimmed.toLowerCase())
+  const showAddNew = onAddNew && trimmed && !exactMatch
+
   const select = (opt) => {
     onChange(opt)
+    setOpen(false)
+  }
+
+  const handleAddNew = async () => {
+    if (!trimmed || adding) return
+    setAdding(true)
+    await onAddNew(trimmed)
+    onChange(trimmed)
+    setAdding(false)
     setOpen(false)
   }
 
@@ -63,10 +87,12 @@ export default function SearchableSelect({ value, onChange, options = [], placeh
         <div className="ss-dropdown">
           <div className="ss-search">
             <input ref={inpRef} value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar..." onClick={e => e.stopPropagation()} />
+              placeholder={onAddNew ? 'Buscar o escribir nuevo...' : 'Buscar...'}
+              onClick={e => e.stopPropagation()}
+              onKeyDown={e => { if (e.key === 'Enter' && showAddNew) handleAddNew() }} />
           </div>
           <div className="ss-list">
-            {filtered.length === 0
+            {filtered.length === 0 && !showAddNew
               ? <div className="ss-empty">Sin resultados</div>
               : filtered.map(opt => (
                 <div key={opt} className={`ss-item${value === opt ? ' selected' : ''}`}
@@ -76,6 +102,12 @@ export default function SearchableSelect({ value, onChange, options = [], placeh
               ))
             }
           </div>
+          {showAddNew && (
+            <div className="ss-add" onClick={handleAddNew}>
+              <span className="ss-add-icon">{adding ? '…' : '+'}</span>
+              {adding ? 'Guardando...' : `Agregar "${trimmed}"`}
+            </div>
+          )}
           {allowClear && value && (
             <div className="ss-clear" onClick={() => { onChange(''); setOpen(false) }}>Limpiar</div>
           )}

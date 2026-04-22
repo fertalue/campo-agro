@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { db, exportCSV, getMaestros } from '../lib/supabase'
+import { db, exportCSV, getMaestros, clearMaestrosCache } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import SearchableSelect from '../components/SearchableSelect'
@@ -350,6 +350,17 @@ function FormCosto({ onSave, onCancel, dolar }) {
 
   const [cotizMsg, setCotizMsg] = useState('')
 
+  // ── Agregar valor nuevo a maestros al vuelo ─────────────────────
+  async function addToMaestros(tipo, valor) {
+    if (!valor?.trim()) return
+    await supabase.from('maestros').insert({ tipo, valor: valor.trim(), activo: true, orden: 999 })
+    clearMaestrosCache()
+    setOpts(prev => ({
+      ...prev,
+      [tipo]: [...new Set([...(prev[tipo] || []), valor.trim()])].sort()
+    }))
+  }
+
   // Cotización del día de la factura
   async function fetchCotizFecha(fecha) {
     if (!fecha) return
@@ -579,10 +590,11 @@ function FormCosto({ onSave, onCancel, dolar }) {
   }
 
   const inp = (k, type, ph) => <input className="input" type={type} value={form[k]} placeholder={ph} onChange={e => f(k, e.target.value)} style={{ width: '100%' }} />
-  const sel = (k, fallbackOpts) => (
+  const sel = (k, fallbackOpts, addNew = false) => (
     <SearchableSelect value={form[k]} onChange={v => f(k, v)}
       options={opts[k]?.length ? opts[k] : fallbackOpts}
-      placeholder="Seleccioná..." />
+      placeholder="Seleccioná..."
+      onAddNew={addNew ? v => addToMaestros(k, v) : null} />
   )
 
   return (
@@ -613,17 +625,18 @@ function FormCosto({ onSave, onCancel, dolar }) {
           <div className="field"><label className="label">Centro de costo</label>{sel('centro_costos', CENTROS)}</div>
         </div>
         <div className="grid-2">
-          <div className="field"><label className="label">Proveedor</label>{sel('proveedor', [])}</div>
+          <div className="field"><label className="label">Proveedor</label>{sel('proveedor', [], true)}</div>
           <div className="field"><label className="label">Concepto</label>{sel('concepto', ['Compra','Servicio','NC','ND','Otro'])}</div>
         </div>
         <div className="field"><label className="label">Producto / Servicio</label>
           <SearchableSelect value={form.producto_servicio} onChange={v => f('producto_servicio', v)}
             options={opts.producto?.length ? opts.producto : []}
-            placeholder="Seleccioná o escribí..." />
+            placeholder="Seleccioná o escribí..."
+            onAddNew={v => addToMaestros('producto', v)} />
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Precio unitario</label>{inp('precio_unitario', 'number', '0.00')}</div>
-          <div className="field"><label className="label">Unidad facturada</label>{sel('unidad', ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa'])}</div>
+          <div className="field"><label className="label">Unidad facturada</label>{sel('unidad', ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa'], true)}</div>
         </div>
 
         {/* Marca y normalización — campos opcionales */}
@@ -702,12 +715,14 @@ function FormCosto({ onSave, onCancel, dolar }) {
                 <div key={idx} style={{ borderTop: '1px solid #E8D5A3', padding: '8px 10px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, alignItems: 'center' }}>
                     <SearchableSelect value={item.producto_servicio} onChange={v => updateExtraItem(idx, 'producto_servicio', v)}
-                      options={opts.producto?.length ? opts.producto : []} placeholder="Producto..." />
+                      options={opts.producto?.length ? opts.producto : []} placeholder="Producto..."
+                      onAddNew={v => addToMaestros('producto', v)} />
                     <input type="number" value={item.precio_unitario} onChange={e => updateExtraItem(idx, 'precio_unitario', e.target.value)} placeholder="Precio" style={si_} />
                     <input type="number" value={item.cantidad} onChange={e => updateExtraItem(idx, 'cantidad', e.target.value)} placeholder="1" style={si_} />
-                    <select value={item.unidad} onChange={e => updateExtraItem(idx, 'unidad', e.target.value)} style={{ ...si_, background: '#F5F0E4' }}>
-                      {['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa'].map(u => <option key={u}>{u}</option>)}
-                    </select>
+                    <input list={`unidad-list-${idx}`} value={item.unidad} onChange={e => updateExtraItem(idx, 'unidad', e.target.value)} placeholder="Unidad" style={si_} />
+                    <datalist id={`unidad-list-${idx}`}>
+                      {(opts.unidad?.length ? opts.unidad : ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa']).map(u => <option key={u} value={u} />)}
+                    </datalist>
                     <select value={item.iva_pct} onChange={e => updateExtraItem(idx, 'iva_pct', parseFloat(e.target.value))} style={{ ...si_, background: '#F5F0E4' }}>
                       <option value={0}>0%</option><option value={0.105}>10.5%</option><option value={0.21}>21%</option>
                     </select>
@@ -854,7 +869,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
             <label className="label">Mes del canje</label>
             <SearchableSelect value={form.mes_canje} onChange={v => f('mes_canje', v)}
               options={opts.mes_canje?.length ? opts.mes_canje : MESES_CANJE}
-              placeholder="Seleccioná el mes" allowClear />
+              placeholder="Seleccioná el mes" allowClear
+              onAddNew={v => addToMaestros('mes_canje', v)} />
           </div>
         )}
         {form.tipo_pago === 'Cta Cte' && (
