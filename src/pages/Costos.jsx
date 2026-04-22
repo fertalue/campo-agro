@@ -339,6 +339,15 @@ function FormCosto({ onSave, onCancel, dolar }) {
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  // ── Ítems adicionales de la misma factura ─────────────────────
+  const [extraItems, setExtraItems] = useState([])
+  const addExtraItem = () => setExtraItems(prev => [...prev, {
+    producto_servicio: '', precio_unitario: '', cantidad: '1',
+    unidad: form.unidad || 'USD/ha', iva_pct: form.iva_pct ?? 0.21, iva_incluido: false,
+  }])
+  const removeExtraItem = (idx) => setExtraItems(prev => prev.filter((_, i) => i !== idx))
+  const updateExtraItem = (idx, k, v) => setExtraItems(prev => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it))
+
   const [cotizMsg, setCotizMsg] = useState('')
 
   // Cotización del día de la factura
@@ -473,6 +482,40 @@ function FormCosto({ onSave, onCancel, dolar }) {
       setSaving(false)
       alert('❌ Error al guardar: ' + (error.message || JSON.stringify(error)))
       return
+    }
+    // ── Guardar ítems adicionales ────────────────────────────────────────
+    if (extraItems.length > 0) {
+      const cotiz_ = parseFloat(form.cotizacion_usd) || 1
+      const esARS_ = form.moneda === 'ARS'
+      const toUSD_ = v => esARS_ ? v / cotiz_ : v
+      const toARS_ = v => esARS_ ? v : v * cotiz_
+      for (const item of extraItems) {
+        if (!item.producto_servicio && !parseFloat(item.precio_unitario)) continue
+        const pu_ = parseFloat(item.precio_unitario) || 0
+        const iva_ = item.iva_pct || 0
+        const cnt_ = parseFloat(item.cantidad) || 1
+        const puSin_ = item.iva_incluido ? pu_ / (1 + iva_) : pu_
+        const totSin_ = puSin_ * cnt_
+        const totIva_ = totSin_ * iva_
+        const totCon_ = totSin_ + totIva_
+        await db.costos.insert({
+          fecha: form.fecha, quien_carga: form.quien_carga, campanha: form.campanha,
+          centro_costos: form.centro_costos, proveedor: form.proveedor, concepto: form.concepto,
+          moneda: form.moneda, cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
+          factura_nombre: clean(form.factura_nombre), factura_numero: clean(form.factura_numero),
+          tipo_pago: form.tipo_pago, mes_canje: clean(form.mes_canje),
+          dia_pago: clean(form.dia_pago), check_pago: form.check_pago || false,
+          comentarios: clean(form.comentarios), carga_especial: false,
+          producto_servicio: item.producto_servicio || null,
+          precio_unitario: pu_ || null, cantidad: cnt_, unidad: item.unidad || null,
+          iva_pct: iva_, iva_incluido: item.iva_incluido,
+          precio_total_sin_iva: toUSD_(totSin_) || null, monto_usd: toUSD_(totSin_) || null,
+          monto_iva: toUSD_(totIva_) || null, valor_total_iva_usd: toUSD_(totIva_) || null,
+          precio_total_con_iva: toUSD_(totCon_) || null, precio_total_usd: toUSD_(totCon_) || null,
+          precio_total_sin_iva_ars: toARS_(totSin_) || null, valor_total_iva_ars: toARS_(totIva_) || null,
+          precio_total_con_iva_ars: toARS_(totCon_) || null, precio_total_ars: toARS_(totCon_) || null,
+        })
+      }
     }
     if (!error && foto && data?.[0]?.id) {
       const url = await db.uploadFoto(foto, data[0].id)
@@ -640,6 +683,58 @@ function FormCosto({ onSave, onCancel, dolar }) {
             <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Con IVA {(form.iva_pct * 100).toFixed(1)}% (USD)</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--arcilla)' }}>{fmtUSD(totConIva_usd)}</div><div style={{ fontSize: 11, color: 'var(--arcilla)', marginTop: 2, opacity: 0.7 }}>ARS {totConIva_ars.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
           </div>
         )}
+        {/* ── Ítems adicionales de la misma factura ──────────────────── */}
+        {extraItems.length > 0 && (
+          <div style={{ background: '#F5F0E8', border: '1px solid #E8D5A3', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, padding: '6px 10px', background: '#EDE0C8', fontSize: 10, fontWeight: 600, color: '#7A6040', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <span>Producto / Servicio</span><span>Precio</span><span>Cant.</span><span>Unidad</span><span>IVA</span><span style={{ textAlign: 'right' }}>Sub. USD</span><span></span>
+            </div>
+            {extraItems.map((item, idx) => {
+              const cotiz_ = parseFloat(form.cotizacion_usd) || 1
+              const esARS_ = form.moneda === 'ARS'
+              const pu_ = parseFloat(item.precio_unitario) || 0
+              const iva_ = item.iva_pct || 0
+              const puSin_ = item.iva_incluido ? pu_ / (1 + iva_) : pu_
+              const cnt_ = parseFloat(item.cantidad) || 1
+              const sub_ = esARS_ ? puSin_ * cnt_ * (1 + iva_) / cotiz_ : puSin_ * cnt_ * (1 + iva_)
+              const si_ = { padding: '5px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', width: '100%', background: '#FDFAF4' }
+              return (
+                <div key={idx} style={{ borderTop: '1px solid #E8D5A3', padding: '8px 10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, alignItems: 'center' }}>
+                    <SearchableSelect value={item.producto_servicio} onChange={v => updateExtraItem(idx, 'producto_servicio', v)}
+                      options={opts.producto?.length ? opts.producto : []} placeholder="Producto..." />
+                    <input type="number" value={item.precio_unitario} onChange={e => updateExtraItem(idx, 'precio_unitario', e.target.value)} placeholder="Precio" style={si_} />
+                    <input type="number" value={item.cantidad} onChange={e => updateExtraItem(idx, 'cantidad', e.target.value)} placeholder="1" style={si_} />
+                    <select value={item.unidad} onChange={e => updateExtraItem(idx, 'unidad', e.target.value)} style={{ ...si_, background: '#F5F0E4' }}>
+                      {['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa'].map(u => <option key={u}>{u}</option>)}
+                    </select>
+                    <select value={item.iva_pct} onChange={e => updateExtraItem(idx, 'iva_pct', parseFloat(e.target.value))} style={{ ...si_, background: '#F5F0E4' }}>
+                      <option value={0}>0%</option><option value={0.105}>10.5%</option><option value={0.21}>21%</option>
+                    </select>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tierra)', textAlign: 'right' }}>
+                      {item.precio_unitario ? fmtUSD(sub_, 0) : '—'}
+                    </div>
+                    <button type="button" onClick={() => removeExtraItem(idx)}
+                      style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #F0997B', background: '#FAECE7', color: '#993C1D', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0 }}>×</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>IVA:</span>
+                    {[['No incluido', false], ['Incluido en precio', true]].map(([lbl, val]) => (
+                      <button key={lbl} type="button" onClick={() => updateExtraItem(idx, 'iva_incluido', val)}
+                        style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: item.iva_incluido === val ? '#4A7C3F' : 'transparent', color: item.iva_incluido === val ? '#F5F0E4' : 'var(--arcilla)', borderColor: item.iva_incluido === val ? '#4A7C3F' : 'var(--border)' }}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <button type="button" onClick={addExtraItem}
+          style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid var(--pasto)', background: extraItems.length > 0 ? 'var(--verde-light)' : 'transparent', color: 'var(--musgo)', fontFamily: 'inherit', fontWeight: 500, alignSelf: 'flex-start' }}>
+          + Agregar ítem a esta factura{extraItems.length > 0 ? ` (${extraItems.length} extra${extraItems.length > 1 ? 's' : ''})` : ''}
+        </button>
         {/* Botón carga especial */}
         <div>
           <button type="button"
