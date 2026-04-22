@@ -604,7 +604,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
         <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${foto ? 'var(--pasto)' : 'var(--border)'}`, borderRadius: 8, padding: '12px 16px', textAlign: 'center', cursor: 'pointer', background: foto ? 'var(--verde-light)' : 'transparent', fontSize: 12, color: foto ? 'var(--musgo)' : 'var(--text-muted)' }}>
           {foto ? `✓ ${foto.name}` : 'Foto de factura (opcional)'}
         </div>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setFoto(e.target.files[0])} />
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => setFoto(e.target.files[0])} />
         {foto && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button type="button" onClick={leerFactura} disabled={leyendoIA}

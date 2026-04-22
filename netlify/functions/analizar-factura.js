@@ -6,6 +6,12 @@ export default async (req) => {
   try {
     const { base64, mediaType } = await req.json()
 
+    // PDFs se envían como "document", imágenes como "image"
+    const isPDF = mediaType === 'application/pdf'
+    const contentBlock = isPDF
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: mediaType,          data: base64 } }
+
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -19,7 +25,7 @@ export default async (req) => {
         messages: [{
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            contentBlock,
             { type: 'text', text: `Analizá esta factura argentina y respondé SOLO con JSON válido (sin markdown), con estos campos exactos:
 {
   "proveedor": "nombre del proveedor",

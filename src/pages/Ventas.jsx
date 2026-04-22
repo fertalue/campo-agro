@@ -60,16 +60,61 @@ function FormViaje({ onSave, onCancel }) {
     titular:'Fer', ctg:'', comprador:'FYO Acopio S.A.', transporte:'',
     patente:'', bruto:'', tara:'', neto:'', kg_descargados:'',
     merma_vol:'', merma_h:'', merma_s:'', neto_romaneo:'',
-    h_pct:'', kg_sin_contrato:'', contrato_aplicado:'',
+    h_pct:'', kg_sin_contrato:'', contrato_aplicado:'', flete_pagador:'',
   }
   const [form, setForm] = useState({ ...empty, fecha: new Date().toISOString().split('T')[0] })
   const f = (k,v) => setForm(p => ({...p,[k]:v}))
   const [saving, setSaving] = useState(false)
+  const [archivo, setArchivo] = useState(null)
+  const [leyendoIA, setLeyendoIA] = useState(false)
+  const [iaMsg, setIaMsg] = useState('')
+  const fileRef = useRef()
 
   const neto = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
   const dif  = (parseFloat(form.kg_descargados)||0) - neto
   const mermaTotal = (parseFloat(form.merma_vol)||0) + (parseFloat(form.merma_h)||0) + (parseFloat(form.merma_s)||0)
   const netoRomaneoCalc = (parseFloat(form.kg_descargados)||0) - mermaTotal
+
+  async function leerCartaDePorte() {
+    if (!archivo) return
+    setLeyendoIA(true); setIaMsg('Leyendo archivo...')
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(r.result.split(',')[1])
+        r.onerror = rej
+        r.readAsDataURL(archivo)
+      })
+      const mediaType = archivo.type || (archivo.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
+      setIaMsg('Analizando con IA...')
+      const resp = await fetch('/api/analizar-carta-porte', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mediaType })
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(`API ${resp.status}: ${JSON.stringify(data?.error)}`)
+      const text = data.content?.[0]?.text || ''
+      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+      setIaMsg('\u2713 Datos cargados')
+      if (parsed.titular)       f('titular',       parsed.titular)
+      if (parsed.ncp)           f('ncp',           parsed.ncp)
+      if (parsed.ctg)           f('ctg',           parsed.ctg)
+      if (parsed.fecha) { const yr = parseInt(parsed.fecha.slice(0,4)); if (yr >= 2024 && yr <= 2030) f('fecha', parsed.fecha) }
+      if (parsed.campanha)      f('campanha',      parsed.campanha)
+      if (parsed.grano)         f('grano',         parsed.grano)
+      if (parsed.comprador)     f('comprador',     parsed.comprador)
+      if (parsed.flete_pagador) f('flete_pagador', parsed.flete_pagador)
+      if (parsed.patente)       f('patente',       parsed.patente)
+      if (parsed.transporte)    f('transporte',    parsed.transporte)
+      if (parsed.bruto)         f('bruto',         String(parsed.bruto))
+      if (parsed.tara)          f('tara',          String(parsed.tara))
+      setTimeout(() => setIaMsg(''), 5000)
+    } catch(err) {
+      setIaMsg('Error: ' + (err?.message || String(err)))
+      setTimeout(() => setIaMsg(''), 8000)
+    }
+    setLeyendoIA(false)
+  }
 
   async function submit(e) {
     e.preventDefault(); setSaving(true)
@@ -84,6 +129,7 @@ function FormViaje({ onSave, onCancel }) {
       neto_romaneo: parseFloat(form.neto_romaneo)||netoRomaneoCalc||null,
       h_pct: parseFloat(form.h_pct)||null,
       kg_sin_contrato: parseFloat(form.kg_sin_contrato)||null,
+      flete_pagador: form.flete_pagador || null,
     })
     setSaving(false); onSave()
   }
@@ -101,6 +147,26 @@ function FormViaje({ onSave, onCancel }) {
   return (
     <div className="card mb-3" style={{ background:'#F9F6EE', borderColor:'var(--paja)' }}>
       <h3 style={{ marginBottom:16 }}>Nuevo viaje</h3>
+
+      {/* Upload carta de porte con IA */}
+      <div style={{ marginBottom:14 }}>
+        <div onClick={() => fileRef.current.click()}
+          style={{ border:`1.5px dashed ${archivo ? 'var(--pasto)' : 'var(--border)'}`, borderRadius:8, padding:'12px 16px', textAlign:'center', cursor:'pointer', background: archivo ? 'var(--verde-light)' : 'transparent', fontSize:12, color: archivo ? 'var(--musgo)' : 'var(--text-muted)' }}>
+          {archivo ? `\u2713 ${archivo.name}` : '\uD83D\uDCC4 Subir Carta de Porte (PDF o imagen) \u2014 autocompletar con IA'}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display:'none' }}
+          onChange={e => { setArchivo(e.target.files[0]); setIaMsg('') }} />
+        {archivo && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:8 }}>
+            <button type="button" onClick={leerCartaDePorte} disabled={leyendoIA}
+              style={{ padding:'8px 16px', borderRadius:7, fontSize:13, cursor: leyendoIA ? 'wait' : 'pointer', border:'1px solid', fontFamily:'inherit', background: leyendoIA ? '#F5F0E4' : 'var(--pasto)', color: leyendoIA ? 'var(--arcilla)' : '#F5F0E4', borderColor: leyendoIA ? 'var(--border)' : 'var(--pasto)', fontWeight:500, transition:'all .2s' }}>
+              {leyendoIA ? '\u23F3 Analizando...' : '\u2728 Analizar con IA'}
+            </button>
+            {iaMsg && <span style={{ fontSize:12, color: iaMsg.startsWith('\u2713') ? 'var(--musgo)' : iaMsg.startsWith('Error') ? '#993C1D' : 'var(--arcilla)' }}>{iaMsg}</span>}
+          </div>
+        )}
+      </div>
+
       <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:12 }}>
         <div className="grid-2">
           <div className="field"><label className="label">Fecha</label>{inp('fecha','date')}</div>
@@ -127,8 +193,10 @@ function FormViaje({ onSave, onCancel }) {
           <div className="field"><label className="label">Patente</label>{inp('patente')}</div>
         </div>
         <div className="field"><label className="label">CTG</label>{inp('ctg')}</div>
-
-        {/* Pesada campo */}
+        <div className="grid-2">
+          <div className="field"><label className="label">Flete pagador</label>{inp('flete_pagador','text','Tecnocampo S.A.')}</div>
+          <div className="field"><label className="label">Transporte / Chofer</label>{inp('transporte')}</div>
+        </div>
         <div style={{ background:'#F0F6FA', border:'1px solid #B8D0D8', borderRadius:8, padding:'12px 14px' }}>
           <div style={{ fontSize:11, fontWeight:500, color:'var(--lluvia)', letterSpacing:'0.05em', textTransform:'uppercase', marginBottom:10 }}>Pesada campo</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
