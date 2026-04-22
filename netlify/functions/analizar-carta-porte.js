@@ -4,7 +4,6 @@ export default async (req) => {
   try {
     const { base64, mediaType } = await req.json()
 
-    // PDFs se envían como "document", imágenes como "image"
     const isPDF = mediaType === 'application/pdf'
     const contentBlock = isPDF
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
@@ -26,7 +25,7 @@ export default async (req) => {
             contentBlock,
             { type: 'text', text: `Esta es una Carta de Porte Electrónica (CPE) argentina. Extraé los datos y respondé SOLO con JSON válido (sin markdown ni backticks):
 {
-  "titular": "nombre del Titular Carta de Porte (solo nombre, sin CUIT)",
+  "titular": "nombre normalizado del Titular Carta de Porte (ver reglas de normalización abajo)",
   "ncp": "número de CPE completo con guión (ej: 07878-00000025)",
   "ctg": "número de CTG",
   "fecha": "YYYY-MM-DD (convertir de DD/MM/YYYY del documento)",
@@ -47,7 +46,13 @@ REGLAS CRÍTICAS:
 - "campanha": el campo dice "2526" → escribir "25-26"; "2425" → "24-25"
 - Fechas: DD/MM/YYYY del documento → YYYY-MM-DD. El año es siempre 2024, 2025 o 2026
 - Sin CUIT, solo el nombre de la empresa o persona
-- "patente" = campo Dominios del transporte` }
+- "patente" = campo Dominios del transporte
+
+NORMALIZACIÓN DE TITULARES (aplicar siempre):
+- Si el titular contiene "FERNANDO", "Fernando" o "ROSSI FERNANDO" → escribir exactamente "Fer"
+- Si el titular contiene "LEONARDO", "Leonardo", "JUAN LEONARDO" o "ROSSI JUAN" → escribir exactamente "Leo"
+- Si el titular contiene "DARIO", "Darío", "ROSSI DARIO" → escribir exactamente "Dari"
+- Para cualquier otro titular, usar solo el nombre sin CUIT` }
           ]
         }]
       })

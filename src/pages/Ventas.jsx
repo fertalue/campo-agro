@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
 
 const CAMPANHAS   = ['25-26','24-25','23-24','22-23']
 const GRANOS      = ['Maíz','Soja','Soja semilla','Trigo','Girasol']
 const TIPOS       = ['Venta','Alquiler','Prestamo']
-const TITULARES   = ['Fer','Leo','Fer y Leo','Giaguaro','Ketopy S.A','Dari','Dario']
+const TITULARES   = ['Fer','Leo','Giaguaro','Ketopy S.A','Dari','Dario']
 const COMPRADORES = ['FYO Acopio S.A.','Tecnocampo','Oro verde','conci srl','Monsanto','MAS AGRO','DARIO ROSSI','6 hermanos','Eslava Gustavo']
 
-const ALQUILER_PCT = 0.27  // 27% para pago de alquiler al padre
-const TITULARES_ALQUILER = ['Giaguaro','Ketopy S.A','Dario','GIAGUARO','KETOPY S.A','Dari']
+const ALQUILER_PCT = 0.27
 const GRANO_COLOR = { 'Maíz':'#C8A96E', 'Soja':'#4A7C3F', 'Soja semilla':'#9DC87A', 'Trigo':'#A0714F', 'Girasol':'#EF9F27' }
 const TIPO_CHIP   = { 'Venta':'chip-green', 'Alquiler':'chip-amber', 'Prestamo':'chip-sky', 'Cosecha':'chip-muted' }
 
@@ -53,6 +53,132 @@ function StatCard({ label, value, sub, color, pct }) {
   )
 }
 
+// ── Fila de edición de viaje ────────────────────────────────────────────────
+function EditRowViaje({ viaje, onSave, onDelete, onCancel, puedeEliminar }) {
+  const [form, setForm] = useState({
+    fecha:             viaje.fecha || '',
+    campanha:          viaje.campanha || '25-26',
+    tipo:              viaje.tipo || 'Venta',
+    ncp:               viaje.ncp || '',
+    ctg:               viaje.ctg || '',
+    grano:             viaje.grano || 'Maíz',
+    titular:           viaje.titular || '',
+    comprador:         viaje.comprador || '',
+    flete_pagador:     viaje.flete_pagador || '',
+    patente:           viaje.patente || '',
+    transporte:        viaje.transporte || '',
+    bruto:             viaje.bruto ?? '',
+    tara:              viaje.tara ?? '',
+    kg_descargados:    viaje.kg_descargados ?? '',
+    merma_vol:         viaje.merma_vol ?? '',
+    merma_h:           viaje.merma_h ?? '',
+    merma_s:           viaje.merma_s ?? '',
+    neto_romaneo:      viaje.neto_romaneo ?? '',
+    h_pct:             viaje.h_pct ?? '',
+    contrato_aplicado: viaje.contrato_aplicado || '',
+  })
+  const f = (k,v) => setForm(p => ({...p,[k]:v}))
+  const [saving, setSaving]       = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [deleting, setDeleting]   = useState(false)
+
+  const netoCalc = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
+  const difCalc  = (parseFloat(form.kg_descargados)||0) - netoCalc
+
+  async function save() {
+    setSaving(true)
+    await onSave(form)
+    setSaving(false)
+  }
+  async function doDelete() {
+    setDeleting(true)
+    await onDelete(viaje.id)
+    setDeleting(false)
+  }
+
+  const si  = { padding:'4px 6px', border:'1px solid #D8C9A8', borderRadius:5, fontSize:11, fontFamily:'inherit', width:'100%', background:'#FDFAF4' }
+  const ro  = { ...si, background:'#EEF2F5', color:'var(--lluvia)', fontWeight:600, cursor:'default' }
+  const num = (k) => <input type="number" value={form[k]} onChange={e=>f(k,e.target.value)} style={si} />
+  const txt = (k, list) => <input value={form[k]} onChange={e=>f(k,e.target.value)} style={si} list={list} />
+
+  return (
+    <tr style={{ background:'#FFF9EE' }}>
+      {/* Fecha */}
+      <td><input type="date" value={form.fecha} onChange={e=>f('fecha',e.target.value)} style={si} /></td>
+      {/* Campaña */}
+      <td><select value={form.campanha} onChange={e=>f('campanha',e.target.value)} style={si}>{CAMPANHAS.map(o=><option key={o}>{o}</option>)}</select></td>
+      {/* Tipo */}
+      <td><select value={form.tipo} onChange={e=>f('tipo',e.target.value)} style={si}>{TIPOS.map(o=><option key={o}>{o}</option>)}</select></td>
+      {/* N° CP */}
+      <td>{txt('ncp')}</td>
+      {/* CTG */}
+      <td>{txt('ctg')}</td>
+      {/* Grano */}
+      <td><select value={form.grano} onChange={e=>f('grano',e.target.value)} style={si}>{GRANOS.map(o=><option key={o}>{o}</option>)}</select></td>
+      {/* Titular */}
+      <td>
+        {txt('titular','er-titulares')}
+        <datalist id="er-titulares">{TITULARES.map(t=><option key={t} value={t}/>)}</datalist>
+      </td>
+      {/* Comprador */}
+      <td>
+        {txt('comprador','er-compradores')}
+        <datalist id="er-compradores">{COMPRADORES.map(c=><option key={c} value={c}/>)}</datalist>
+      </td>
+      {/* Flete pagador */}
+      <td>{txt('flete_pagador')}</td>
+      {/* Patente */}
+      <td>{txt('patente')}</td>
+      {/* Bruto */}
+      <td>{num('bruto')}</td>
+      {/* Tara */}
+      <td>{num('tara')}</td>
+      {/* Neto campo — calculado */}
+      <td><input readOnly value={netoCalc ? Math.round(netoCalc).toLocaleString('es-AR')+' kg' : '—'} style={ro} /></td>
+      {/* Kg desc. */}
+      <td>{num('kg_descargados')}</td>
+      {/* Dif. — calculada */}
+      <td><input readOnly value={difCalc ? (difCalc>0?'+':'')+Math.round(difCalc).toLocaleString('es-AR') : '—'} style={{...ro, color: difCalc < 0 ? '#993C1D' : 'var(--musgo)'}} /></td>
+      {/* Mermas */}
+      <td>{num('merma_vol')}</td>
+      <td>{num('merma_h')}</td>
+      <td>{num('merma_s')}</td>
+      {/* Neto Romaneo */}
+      <td>{num('neto_romaneo')}</td>
+      {/* H% */}
+      <td><input type="number" value={form.h_pct} onChange={e=>f('h_pct',e.target.value)} style={{...si,width:55}} /></td>
+      {/* Contrato */}
+      <td>{txt('contrato_aplicado')}</td>
+      {/* Acciones */}
+      <td>
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap', minWidth:120 }}>
+          <button onClick={save} disabled={saving}
+            style={{ background:'var(--pasto)', color:'white', border:'none', borderRadius:5, padding:'4px 8px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap' }}>
+            {saving ? '...' : '✓ OK'}
+          </button>
+          <button onClick={onCancel}
+            style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:5, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>✕</button>
+          {puedeEliminar && !confirmDel && (
+            <button onClick={() => setConfirmDel(true)}
+              style={{ background:'#FAECE7', border:'1px solid #F0997B', borderRadius:5, padding:'4px 8px', fontSize:11, cursor:'pointer', color:'#993C1D' }}>🗑</button>
+          )}
+          {puedeEliminar && confirmDel && (
+            <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+              <span style={{ fontSize:10, color:'#993C1D', whiteSpace:'nowrap' }}>¿Eliminar?</span>
+              <button onClick={doDelete} disabled={deleting}
+                style={{ background:'#993C1D', color:'white', border:'none', borderRadius:5, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                {deleting ? '...' : 'Sí'}
+              </button>
+              <button onClick={() => setConfirmDel(false)}
+                style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:5, padding:'4px 6px', fontSize:11, cursor:'pointer' }}>No</button>
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ── Formulario nuevo viaje ──────────────────────────────────────────────────
 function FormViaje({ onSave, onCancel }) {
   const empty = {
@@ -64,15 +190,15 @@ function FormViaje({ onSave, onCancel }) {
   }
   const [form, setForm] = useState({ ...empty, fecha: new Date().toISOString().split('T')[0] })
   const f = (k,v) => setForm(p => ({...p,[k]:v}))
-  const [saving, setSaving] = useState(false)
-  const [archivo, setArchivo] = useState(null)
+  const [saving, setSaving]       = useState(false)
+  const [archivo, setArchivo]     = useState(null)
   const [leyendoIA, setLeyendoIA] = useState(false)
-  const [iaMsg, setIaMsg] = useState('')
+  const [iaMsg, setIaMsg]         = useState('')
   const fileRef = useRef()
 
   const neto = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
   const dif  = (parseFloat(form.kg_descargados)||0) - neto
-  const mermaTotal = (parseFloat(form.merma_vol)||0) + (parseFloat(form.merma_h)||0) + (parseFloat(form.merma_s)||0)
+  const mermaTotal      = (parseFloat(form.merma_vol)||0) + (parseFloat(form.merma_h)||0) + (parseFloat(form.merma_s)||0)
   const netoRomaneoCalc = (parseFloat(form.kg_descargados)||0) - mermaTotal
 
   async function leerCartaDePorte() {
@@ -93,9 +219,9 @@ function FormViaje({ onSave, onCancel }) {
       })
       const data = await resp.json()
       if (!resp.ok) throw new Error(`API ${resp.status}: ${JSON.stringify(data?.error)}`)
-      const text = data.content?.[0]?.text || ''
+      const text   = data.content?.[0]?.text || ''
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-      setIaMsg('\u2713 Datos cargados')
+      setIaMsg('✓ Datos cargados')
       if (parsed.titular)       f('titular',       parsed.titular)
       if (parsed.ncp)           f('ncp',           parsed.ncp)
       if (parsed.ctg)           f('ctg',           parsed.ctg)
@@ -152,7 +278,7 @@ function FormViaje({ onSave, onCancel }) {
       <div style={{ marginBottom:14 }}>
         <div onClick={() => fileRef.current.click()}
           style={{ border:`1.5px dashed ${archivo ? 'var(--pasto)' : 'var(--border)'}`, borderRadius:8, padding:'12px 16px', textAlign:'center', cursor:'pointer', background: archivo ? 'var(--verde-light)' : 'transparent', fontSize:12, color: archivo ? 'var(--musgo)' : 'var(--text-muted)' }}>
-          {archivo ? `\u2713 ${archivo.name}` : '\uD83D\uDCC4 Subir Carta de Porte (PDF o imagen) \u2014 autocompletar con IA'}
+          {archivo ? `✓ ${archivo.name}` : '📄 Subir Carta de Porte (PDF o imagen) — autocompletar con IA'}
         </div>
         <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display:'none' }}
           onChange={e => { setArchivo(e.target.files[0]); setIaMsg('') }} />
@@ -160,9 +286,9 @@ function FormViaje({ onSave, onCancel }) {
           <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:8 }}>
             <button type="button" onClick={leerCartaDePorte} disabled={leyendoIA}
               style={{ padding:'8px 16px', borderRadius:7, fontSize:13, cursor: leyendoIA ? 'wait' : 'pointer', border:'1px solid', fontFamily:'inherit', background: leyendoIA ? '#F5F0E4' : 'var(--pasto)', color: leyendoIA ? 'var(--arcilla)' : '#F5F0E4', borderColor: leyendoIA ? 'var(--border)' : 'var(--pasto)', fontWeight:500, transition:'all .2s' }}>
-              {leyendoIA ? '\u23F3 Analizando...' : '\u2728 Analizar con IA'}
+              {leyendoIA ? '⏳ Analizando...' : '✨ Analizar con IA'}
             </button>
-            {iaMsg && <span style={{ fontSize:12, color: iaMsg.startsWith('\u2713') ? 'var(--musgo)' : iaMsg.startsWith('Error') ? '#993C1D' : 'var(--arcilla)' }}>{iaMsg}</span>}
+            {iaMsg && <span style={{ fontSize:12, color: iaMsg.startsWith('✓') ? 'var(--musgo)' : iaMsg.startsWith('Error') ? '#993C1D' : 'var(--arcilla)' }}>{iaMsg}</span>}
           </div>
         )}
       </div>
@@ -174,7 +300,7 @@ function FormViaje({ onSave, onCancel }) {
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Tipo</label>{sel('tipo', TIPOS)}</div>
-          <div className="field"><label className="label">N° CP</label>{inp('ncp','text','0-001')}</div>
+          <div className="field"><label className="label">N° CP</label>{inp('ncp','text','07878-00000001')}</div>
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Grano</label>{sel('grano', GRANOS)}</div>
@@ -192,11 +318,13 @@ function FormViaje({ onSave, onCancel }) {
           </div>
           <div className="field"><label className="label">Patente</label>{inp('patente')}</div>
         </div>
-        <div className="field"><label className="label">CTG</label>{inp('ctg')}</div>
         <div className="grid-2">
+          <div className="field"><label className="label">CTG</label>{inp('ctg')}</div>
           <div className="field"><label className="label">Flete pagador</label>{inp('flete_pagador','text','Tecnocampo S.A.')}</div>
-          <div className="field"><label className="label">Transporte / Chofer</label>{inp('transporte')}</div>
         </div>
+        <div className="field"><label className="label">Transporte / Chofer</label>{inp('transporte')}</div>
+
+        {/* Pesada campo */}
         <div style={{ background:'#F0F6FA', border:'1px solid #B8D0D8', borderRadius:8, padding:'12px 14px' }}>
           <div style={{ fontSize:11, fontWeight:500, color:'var(--lluvia)', letterSpacing:'0.05em', textTransform:'uppercase', marginBottom:10 }}>Pesada campo</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
@@ -291,8 +419,7 @@ function FormCosecha({ onSave, onCancel }) {
   )
 }
 
-// ── Multi-select para filtros ──────────────────────────────────────────────
-
+// ── Multi-select para filtros ───────────────────────────────────────────────
 function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
   const [open, setOpen] = React.useState(false)
   const ref = useRef()
@@ -344,13 +471,17 @@ export default function Ventas() {
   const [cosecha, setCosecha] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab]         = useState('resumen')
-  const [showForm, setShowForm]   = useState(false)
+  const [showForm,    setShowForm]    = useState(false)
   const [showCosecha, setShowCosecha] = useState(false)
   const [fCampanha, setFCampanha] = useState([])
   const [fGrano,    setFGrano]    = useState([])
   const [fTipo,     setFTipo]     = useState([])
   const [fTitular,  setFTitular]  = useState([])
   const [busqueda,  setBusqueda]  = useState('')
+  const [editando,  setEditando]  = useState(null)
+
+  const { puedeEditar, isAdmin } = useAuth()
+  const puedeEditar_ = isAdmin || puedeEditar('ventas')
 
   useEffect(() => { fetchAll() }, [])
 
@@ -365,23 +496,61 @@ export default function Ventas() {
     setLoading(false)
   }
 
-  // Filtros multi-select
+  async function saveViaje(id, form) {
+    const netoCalc = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
+    const difCalc  = (parseFloat(form.kg_descargados)||0) - netoCalc
+    const clean    = v => (v === '' || v === undefined) ? null : v
+    const num      = v => { const n = parseFloat(v); return isNaN(n) ? null : n }
+    await supabase.from('granos_viajes').update({
+      fecha:             clean(form.fecha),
+      campanha:          clean(form.campanha),
+      tipo:              clean(form.tipo),
+      ncp:               clean(form.ncp),
+      ctg:               clean(form.ctg),
+      grano:             clean(form.grano),
+      titular:           clean(form.titular),
+      comprador:         clean(form.comprador),
+      flete_pagador:     clean(form.flete_pagador),
+      patente:           clean(form.patente),
+      transporte:        clean(form.transporte),
+      bruto:             num(form.bruto),
+      tara:              num(form.tara),
+      neto:              netoCalc || null,
+      kg_descargados:    num(form.kg_descargados),
+      dif_puerto:        difCalc || null,
+      merma_vol:         num(form.merma_vol),
+      merma_h:           num(form.merma_h),
+      merma_s:           num(form.merma_s),
+      neto_romaneo:      num(form.neto_romaneo),
+      h_pct:             num(form.h_pct),
+      contrato_aplicado: clean(form.contrato_aplicado),
+    }).eq('id', id)
+    setEditando(null)
+    await fetchAll()
+  }
+
+  async function deleteViaje(id) {
+    await supabase.from('granos_viajes').delete().eq('id', id)
+    setEditando(null)
+    await fetchAll()
+  }
+
+  // Filtros
   const matchArr = (arr, val) => arr.length === 0 || arr.includes(val)
   const filtered = viajes.filter(v => {
     if (!matchArr(fCampanha, v.campanha)) return false
-    if (!matchArr(fGrano, v.grano)) return false
-    if (!matchArr(fTipo, v.tipo)) return false
-    if (!matchArr(fTitular, v.titular)) return false
+    if (!matchArr(fGrano, v.grano))       return false
+    if (!matchArr(fTipo, v.tipo))         return false
+    if (!matchArr(fTitular, v.titular))   return false
     if (busqueda) {
       const b = busqueda.toLowerCase()
-      return [v.titular, v.comprador, v.grano, v.ncp, v.contrato_aplicado, v.patente]
+      return [v.titular, v.comprador, v.grano, v.ncp, v.ctg, v.contrato_aplicado, v.patente, v.flete_pagador]
         .some(x => x && x.toLowerCase().includes(b))
     }
     return true
   })
 
   const cosechaFiltrada = cosecha.filter(c => matchArr(fCampanha, c.campanha))
-  const campañaActiva   = fCampanha.length === 1 ? fCampanha[0] : null
 
   // Totales
   const totalRomaneo = filtered.reduce((a,b) => a + (b.neto_romaneo||0), 0)
@@ -389,7 +558,7 @@ export default function Ventas() {
   const totalDif     = filtered.reduce((a,b) => a + (b.dif_puerto||0), 0)
   const totalViajes  = filtered.length
 
-  // Por grano — romaneo y cosecha
+  // Por grano
   const byGrano = {}
   filtered.forEach(v => {
     if (!byGrano[v.grano]) byGrano[v.grano] = { vendido: 0, count: 0 }
@@ -410,40 +579,25 @@ export default function Ventas() {
   })
 
   const granos = Object.keys(byGrano)
-  const campAnhos = ['Todas', ...CAMPANHAS]
 
-  // ── Distribución campaña ──────────────────────────────────────────
-  // Agrupar cosecha por categoria: Maíz y Soja (soja + soja semilla)
+  // Distribución
   const categorias = { 'Maíz': 0, 'Soja': 0 }
   cosechaFiltrada.forEach(c => {
     if (c.grano === 'Maíz') categorias['Maíz'] += c.neto_romaneo || 0
-    else categorias['Soja'] += c.neto_romaneo || 0  // Soja + Soja semilla
+    else categorias['Soja'] += c.neto_romaneo || 0
   })
 
-  // Por cada categoría: alquiler 27%, resto 50/50 Fer y Leo
   const distrib = Object.entries(categorias).map(([cat, cosechaTotal]) => {
-    const alquiler    = cosechaTotal * ALQUILER_PCT
-    const disponible  = cosechaTotal * (1 - ALQUILER_PCT)
-    const cuotaFer    = disponible / 2
-    const cuotaLeo    = disponible / 2
-
-    // Viajes de venta por titular para esta campaña y categoria de grano
+    const alquiler   = cosechaTotal * ALQUILER_PCT
+    const disponible = cosechaTotal * (1 - ALQUILER_PCT)
+    const cuotaFer   = disponible / 2
+    const cuotaLeo   = disponible / 2
     const esCategoria = (grano) => cat === 'Maíz' ? grano === 'Maíz' : (grano === 'Soja' || grano === 'Soja semilla')
-    const viajesCat   = viajes.filter(v =>
-      matchArr(fCampanha, v.campanha) &&
-      esCategoria(v.grano) && v.tipo === 'Venta'
-    )
-
+    const viajesCat  = viajes.filter(v => matchArr(fCampanha, v.campanha) && esCategoria(v.grano) && v.tipo === 'Venta')
     const vendidoFer = viajesCat.filter(v => v.titular === 'Fer').reduce((a,b) => a + (b.neto_romaneo||0), 0)
     const vendidoLeo = viajesCat.filter(v => v.titular === 'Leo').reduce((a,b) => a + (b.neto_romaneo||0), 0)
-
-    // Viajes de alquiler (van al padre)
-    const viajesAlquiler = viajes.filter(v =>
-      matchArr(fCampanha, v.campanha) &&
-      esCategoria(v.grano) && v.tipo === 'Alquiler'
-    )
-    const entregadoAlquiler = viajesAlquiler.reduce((a,b) => a + (b.neto_romaneo||0), 0)
-
+    const viajesAlq  = viajes.filter(v => matchArr(fCampanha, v.campanha) && esCategoria(v.grano) && v.tipo === 'Alquiler')
+    const entregadoAlquiler = viajesAlq.reduce((a,b) => a + (b.neto_romaneo||0), 0)
     return {
       cat, cosechaTotal, alquiler, disponible, cuotaFer, cuotaLeo,
       vendidoFer, vendidoLeo, entregadoAlquiler,
@@ -457,7 +611,6 @@ export default function Ventas() {
     <div>
       <style>{CSS}</style>
 
-      {/* Header */}
       <div className="flex-between mb-2">
         <div>
           <h2>Ventas / Granos</h2>
@@ -478,7 +631,7 @@ export default function Ventas() {
       {showCosecha && <FormCosecha onSave={async()=>{setShowCosecha(false);await fetchAll()}} onCancel={()=>setShowCosecha(false)} />}
       {showForm    && <FormViaje  onSave={async()=>{setShowForm(false);  await fetchAll()}} onCancel={()=>setShowForm(false)} />}
 
-      {/* Filtros multi-select */}
+      {/* Filtros */}
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
         <VtMultiSelect label="Campaña"  options={CAMPANHAS}  selected={fCampanha}  onChange={setFCampanha}  placeholder="Todas" />
         <VtMultiSelect label="Grano"    options={[...new Set(viajes.map(v=>v.grano).filter(Boolean))].sort()} selected={fGrano} onChange={setFGrano} placeholder="Todos" />
@@ -501,16 +654,15 @@ export default function Ventas() {
 
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,minmax(0,1fr))', gap:10, marginBottom:16 }}>
-        <StatCard label="Neto Romaneo" value={fmtTn(totalRomaneo)} sub={`${totalViajes} viajes`} color="#4A7C3F" pct={80} />
-        <StatCard label="Pesada campo" value={fmtTn(totalNeto)} sub="neto campo" color="#7A9EAD" pct={85} />
+        <StatCard label="Neto Romaneo"      value={fmtTn(totalRomaneo)} sub={`${totalViajes} viajes`} color="#4A7C3F" pct={80} />
+        <StatCard label="Pesada campo"      value={fmtTn(totalNeto)}    sub="neto campo"              color="#7A9EAD" pct={85} />
         <StatCard label="Dif. campo/puerto" value={fmtKg(Math.abs(totalDif))} sub={totalDif > 0 ? 'a favor' : 'en contra'} color={totalDif >= 0 ? '#4A7C3F' : '#A0714F'} pct={40} />
-        <StatCard label="Camiones" value={totalViajes.toString()} sub={fCampanha.length === 1 ? `campaña ${fCampanha[0]}` : `${filtered.length} viajes`} color="#C8A96E" pct={60} />
+        <StatCard label="Camiones"          value={totalViajes.toString()} sub={`${filtered.length} viajes`} color="#C8A96E" pct={60} />
       </div>
 
-      {/* RESUMEN */}
+      {/* ─────────── RESUMEN ─────────── */}
       {tab === 'resumen' && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-          {/* Por grano con progreso cosecha */}
           <div className="card">
             <h3 style={{ fontSize:14, marginBottom:14 }}>Por grano — % cosecha vendida</h3>
             {granos.length === 0
@@ -549,8 +701,6 @@ export default function Ventas() {
                 )
               })}
           </div>
-
-          {/* Por titular */}
           <div className="card">
             <h3 style={{ fontSize:14, marginBottom:14 }}>Por titular</h3>
             {Object.entries(byTitular).sort((a,b)=>b[1]-a[1]).map(([tit, vol]) => (
@@ -574,7 +724,7 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* VIAJES */}
+      {/* ─────────── VIAJES (con edición inline) ─────────── */}
       {tab === 'viajes' && (
         <div>
           <div style={{ marginBottom:10, position:'relative' }}>
@@ -582,9 +732,10 @@ export default function Ventas() {
               <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
             </svg>
             <input value={busqueda} onChange={e=>setBusqueda(e.target.value)}
-              placeholder="Buscar por titular, comprador, contrato, patente..."
+              placeholder="Buscar por titular, comprador, CTG, contrato, patente, flete..."
               style={{ width:'100%', padding:'9px 12px 9px 32px', border:'1px solid #D8C9A8', borderRadius:8, fontSize:13, background:'#FDFAF4', fontFamily:'inherit' }} />
           </div>
+
           <div className="card" style={{ padding:0, overflowX:'auto' }}>
             {loading
               ? <div style={{ padding:32, textAlign:'center', fontSize:13, color:'var(--arcilla)' }}>Cargando...</div>
@@ -592,55 +743,79 @@ export default function Ventas() {
               ? <div style={{ padding:32, textAlign:'center', fontSize:13, color:'var(--arcilla)' }}>Sin viajes</div>
               : <table className="vt-tbl">
                   <thead><tr>
-                    <th>Fecha</th><th>Campaña</th><th>Tipo</th><th>N°CP</th><th>Grano</th>
-                    <th>Titular</th><th>Comprador</th><th>Bruto</th><th>Tara</th>
-                    <th>Neto campo</th><th>Kg descarg.</th><th>Dif.</th>
-                    <th>Merma vol</th><th>Merma H</th><th>Merma S</th>
+                    <th>Fecha</th><th>Campaña</th><th>Tipo</th><th>N°CP</th><th>CTG</th><th>Grano</th>
+                    <th>Titular</th><th>Comprador</th><th>Flete pag.</th><th>Patente</th>
+                    <th>Bruto</th><th>Tara</th><th>Neto campo</th>
+                    <th>Kg desc.</th><th>Dif.</th>
+                    <th>M.vol</th><th>M.H</th><th>M.S</th>
                     <th>Neto Romaneo</th><th>H%</th><th>Contrato</th>
+                    {puedeEditar_ && <th></th>}
                   </tr></thead>
                   <tbody>
-                    {filtered.map(v => (
-                      <tr key={v.id}>
-                        <td style={{ color:'var(--text-muted)' }}>{fmtFecha(v.fecha)}</td>
-                        <td style={{ color:'var(--text-muted)' }}>{v.campanha}</td>
-                        <td><span className={`cc ${TIPO_CHIP[v.tipo]||'chip-muted'}`}>{v.tipo}</span></td>
-                        <td style={{ color:'var(--text-muted)' }}>{v.ncp}</td>
-                        <td>
-                          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                            <div style={{ width:8, height:8, borderRadius:'50%', background:GRANO_COLOR[v.grano]||'#888', flexShrink:0 }}/>
-                            {v.grano}
-                          </div>
-                        </td>
-                        <td style={{ fontWeight:500 }}>{v.titular}</td>
-                        <td style={{ color:'var(--suelo)' }}>{v.comprador}</td>
-                        <td style={{ fontFamily:'monospace' }}>{fmtKg(v.bruto)}</td>
-                        <td style={{ fontFamily:'monospace' }}>{fmtKg(v.tara)}</td>
-                        <td style={{ fontFamily:'monospace', fontWeight:500 }}>{fmtKg(v.neto)}</td>
-                        <td style={{ fontFamily:'monospace' }}>{fmtKg(v.kg_descargados)}</td>
-                        <td style={{ fontFamily:'monospace', color: (v.dif_puerto||0) > 0 ? 'var(--musgo)' : '#993C1D' }}>
-                          {v.dif_puerto ? `${v.dif_puerto > 0 ? '+':''}${Math.round(v.dif_puerto).toLocaleString('es-AR')}` : '—'}
-                        </td>
-                        <td style={{ fontFamily:'monospace', color:'var(--text-muted)' }}>{fmtKg(v.merma_vol)}</td>
-                        <td style={{ fontFamily:'monospace', color:'var(--text-muted)' }}>{fmtKg(v.merma_h)}</td>
-                        <td style={{ fontFamily:'monospace', color:'var(--text-muted)' }}>{fmtKg(v.merma_s)}</td>
-                        <td style={{ fontFamily:'monospace', fontWeight:600, color:'var(--musgo)' }}>{fmtKg(v.neto_romaneo)}</td>
-                        <td style={{ color:'var(--text-muted)' }}>{fmtPct(v.h_pct)}</td>
-                        <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.contrato_aplicado||'—'}</td>
-                      </tr>
-                    ))}
+                    {filtered.map(v => {
+                      if (editando === v.id) {
+                        return (
+                          <EditRowViaje key={v.id} viaje={v}
+                            puedeEliminar={puedeEditar_}
+                            onSave={form => saveViaje(v.id, form)}
+                            onDelete={deleteViaje}
+                            onCancel={() => setEditando(null)} />
+                        )
+                      }
+                      return (
+                        <tr key={v.id}>
+                          <td style={{ color:'var(--text-muted)' }}>{fmtFecha(v.fecha)}</td>
+                          <td style={{ color:'var(--text-muted)' }}>{v.campanha}</td>
+                          <td><span className={`cc ${TIPO_CHIP[v.tipo]||'chip-muted'}`}>{v.tipo}</span></td>
+                          <td style={{ color:'var(--text-muted)', fontSize:11 }}>{v.ncp || '—'}</td>
+                          <td style={{ color:'var(--text-muted)', fontSize:11 }}>{v.ctg || '—'}</td>
+                          <td>
+                            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                              <div style={{ width:8, height:8, borderRadius:'50%', background:GRANO_COLOR[v.grano]||'#888', flexShrink:0 }}/>
+                              {v.grano}
+                            </div>
+                          </td>
+                          <td style={{ fontWeight:500 }}>{v.titular}</td>
+                          <td style={{ color:'var(--suelo)' }}>{v.comprador}</td>
+                          <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.flete_pagador || '—'}</td>
+                          <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.patente || '—'}</td>
+                          <td style={{ fontFamily:'monospace' }}>{fmtKg(v.bruto)}</td>
+                          <td style={{ fontFamily:'monospace' }}>{fmtKg(v.tara)}</td>
+                          <td style={{ fontFamily:'monospace', fontWeight:500 }}>{fmtKg(v.neto)}</td>
+                          <td style={{ fontFamily:'monospace' }}>{fmtKg(v.kg_descargados)}</td>
+                          <td style={{ fontFamily:'monospace', color: (v.dif_puerto||0) > 0 ? 'var(--musgo)' : '#993C1D' }}>
+                            {v.dif_puerto ? `${v.dif_puerto > 0 ? '+':''}${Math.round(v.dif_puerto).toLocaleString('es-AR')}` : '—'}
+                          </td>
+                          <td style={{ fontFamily:'monospace', color:'var(--text-muted)' }}>{fmtKg(v.merma_vol)}</td>
+                          <td style={{ fontFamily:'monospace', color:'var(--text-muted)' }}>{fmtKg(v.merma_h)}</td>
+                          <td style={{ fontFamily:'monospace', color:'var(--text-muted)' }}>{fmtKg(v.merma_s)}</td>
+                          <td style={{ fontFamily:'monospace', fontWeight:600, color:'var(--musgo)' }}>{fmtKg(v.neto_romaneo)}</td>
+                          <td style={{ color:'var(--text-muted)' }}>{fmtPct(v.h_pct)}</td>
+                          <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.contrato_aplicado || '—'}</td>
+                          {puedeEditar_ && (
+                            <td>
+                              <button onClick={() => setEditando(v.id)}
+                                style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:5, padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--arcilla)', whiteSpace:'nowrap' }}>
+                                Editar
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'#F5F0E4', fontWeight:600 }}>
-                      <td colSpan={7} style={{ padding:'10px 10px', fontSize:11, color:'var(--text-muted)' }}>{filtered.length} viajes</td>
+                      <td colSpan={10} style={{ padding:'10px', fontSize:11, color:'var(--text-muted)' }}>{filtered.length} viajes</td>
                       <td colSpan={2}></td>
-                      <td style={{ padding:'10px 10px', fontFamily:'monospace' }}>{fmtKg(totalNeto)}</td>
-                      <td colSpan={1}></td>
-                      <td style={{ padding:'10px 10px', fontFamily:'monospace', color: totalDif >= 0 ? 'var(--musgo)' : '#993C1D' }}>
+                      <td style={{ padding:'10px', fontFamily:'monospace' }}>{fmtKg(totalNeto)}</td>
+                      <td></td>
+                      <td style={{ padding:'10px', fontFamily:'monospace', color: totalDif >= 0 ? 'var(--musgo)' : '#993C1D' }}>
                         {totalDif ? `${totalDif>0?'+':''}${Math.round(totalDif).toLocaleString('es-AR')}` : '—'}
                       </td>
                       <td colSpan={3}></td>
-                      <td style={{ padding:'10px 10px', fontFamily:'monospace', color:'var(--musgo)' }}>{fmtKg(totalRomaneo)}</td>
-                      <td colSpan={2}></td>
+                      <td style={{ padding:'10px', fontFamily:'monospace', color:'var(--musgo)' }}>{fmtKg(totalRomaneo)}</td>
+                      <td colSpan={puedeEditar_ ? 3 : 2}></td>
                     </tr>
                   </tfoot>
                 </table>}
@@ -648,10 +823,9 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* MERMAS - Pesada vs Puerto */}
+      {/* ─────────── MERMAS ─────────── */}
       {tab === 'mermas' && (
         <div>
-          {/* Por grano */}
           {granos.map(g => {
             const gViajes = filtered.filter(v => v.grano === g && v.neto)
             if (!gViajes.length) return null
@@ -675,26 +849,14 @@ export default function Ventas() {
                     Pérdida total: {pctMerma.toFixed(2)}%
                   </span>
                 </div>
-
-                {/* Barra visual */}
                 <div style={{ display:'flex', height:32, borderRadius:8, overflow:'hidden', marginBottom:12, fontSize:11, fontWeight:500 }}>
-                  <div style={{ background:col, flex: gRomaneo, display:'flex', alignItems:'center', justifyContent:'center', color:'white', minWidth:60 }}>
-                    Romaneo
-                  </div>
+                  <div style={{ background:col, flex: gRomaneo, display:'flex', alignItems:'center', justifyContent:'center', color:'white', minWidth:60 }}>Romaneo</div>
                   {gMermaVol > 0 && <div style={{ background:'#A0714F', flex:gMermaVol, display:'flex', alignItems:'center', justifyContent:'center', color:'white', minWidth:30 }}>vol</div>}
                   {gMermaH > 0 && <div style={{ background:'#7A9EAD', flex:gMermaH, display:'flex', alignItems:'center', justifyContent:'center', color:'white', minWidth:30 }}>H</div>}
                   {gMermaS > 0 && <div style={{ background:'#C8A96E', flex:gMermaS, display:'flex', alignItems:'center', justifyContent:'center', color:'white', minWidth:30 }}>S</div>}
                 </div>
-
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8 }}>
-                  {[
-                    ['Neto campo', fmtTn(gNeto), '#7A9EAD'],
-                    ['Descargado', fmtTn(gDescarg), '#4E7A8A'],
-                    ['Merma vol.', fmtTn(gMermaVol), '#A0714F'],
-                    ['Merma H.', fmtTn(gMermaH), '#7A9EAD'],
-                    ['Merma S.', fmtTn(gMermaS), '#C8A96E'],
-                    ['Neto Romaneo', fmtTn(gRomaneo), col],
-                  ].map(([lbl,val,c]) => (
+                  {[['Neto campo',fmtTn(gNeto),'#7A9EAD'],['Descargado',fmtTn(gDescarg),'#4E7A8A'],['Merma vol.',fmtTn(gMermaVol),'#A0714F'],['Merma H.',fmtTn(gMermaH),'#7A9EAD'],['Merma S.',fmtTn(gMermaS),'#C8A96E'],['Neto Romaneo',fmtTn(gRomaneo),col]].map(([lbl,val,c]) => (
                     <div key={lbl} style={{ background:'#FAF7F0', borderRadius:8, padding:'10px', textAlign:'center' }}>
                       <div style={{ fontSize:10, color:'var(--text-muted)', fontWeight:500, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{lbl}</div>
                       <div style={{ fontSize:13, fontWeight:600, color:c }}>{val}</div>
@@ -707,7 +869,7 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* DISTRIBUCIÓN */}
+      {/* ─────────── DISTRIBUCIÓN ─────────── */}
       {tab === 'distribucion' && (
         <div>
           {fCampanha.length !== 1 && (
@@ -717,96 +879,46 @@ export default function Ventas() {
           )}
           {distrib.length === 0 ? (
             <div className="card" style={{ textAlign:'center', fontSize:13, color:'var(--arcilla)' }}>
-              No hay datos de cosecha para la campaña {fCampanha}. Registrá la cosecha primero con el botón "+ Cosecha".
+              No hay datos de cosecha para {fCampanha.join(', ')||'la campaña'}. Registrá la cosecha primero con el botón "+ Cosecha".
             </div>
           ) : distrib.map(d => (
             <div key={d.cat} className="card" style={{ marginBottom:16 }}>
-              {/* Título grano */}
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
                 <div style={{ width:14, height:14, borderRadius:'50%', background: d.cat === 'Maíz' ? '#C8A96E' : '#4A7C3F' }}/>
                 <h3 style={{ fontSize:15 }}>{d.cat}</h3>
                 <span style={{ fontSize:12, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
               </div>
-
-              {/* Barra de distribución visual */}
               <div style={{ display:'flex', height:36, borderRadius:8, overflow:'hidden', marginBottom:16, fontSize:11, fontWeight:500 }}>
-                <div style={{ flex: d.alquiler, background:'#A0714F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:60 }}>
-                  <span>Alquiler 27%</span>
-                </div>
-                <div style={{ flex: d.cuotaFer, background:'#4A7C3F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}>
-                  <span>Fer</span>
-                </div>
-                <div style={{ flex: d.cuotaLeo, background:'#C8A96E', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}>
-                  <span>Leo</span>
-                </div>
+                <div style={{ flex: d.alquiler, background:'#A0714F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:60 }}><span>Alquiler 27%</span></div>
+                <div style={{ flex: d.cuotaFer, background:'#4A7C3F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}><span>Fer</span></div>
+                <div style={{ flex: d.cuotaLeo, background:'#C8A96E', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}><span>Leo</span></div>
               </div>
-
-              {/* Cards por destinatario */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-                {/* Alquiler - padre */}
                 <div style={{ background:'#FAF3EC', border:'1px solid #D8C9A8', borderRadius:10, padding:'14px' }}>
-                  <div style={{ fontSize:10, fontWeight:600, color:'#A0714F', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
-                    Alquiler — Padre
-                  </div>
+                  <div style={{ fontSize:10, fontWeight:600, color:'#A0714F', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Alquiler — Padre</div>
                   <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>Ketopy · Giaguaro · Dario</div>
-                  <div style={{ marginBottom:8 }}>
-                    <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div>
-                    <div style={{ fontSize:18, fontWeight:600, color:'#A0714F' }}>{fmtTn(d.alquiler)}</div>
-                  </div>
+                  <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div><div style={{ fontSize:18, fontWeight:600, color:'#A0714F' }}>{fmtTn(d.alquiler)}</div></div>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                    <div>
-                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>Entregado</div>
-                      <div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(d.entregadoAlquiler)}</div>
-                    </div>
-                    <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>Pendiente</div>
-                      <div style={{ fontSize:14, fontWeight:600, color: d.restanteAlquiler > 0 ? '#993C1D' : '#4A7C3F' }}>
-                        {d.restanteAlquiler > 0 ? fmtTn(d.restanteAlquiler) : '✓ Completo'}
-                      </div>
-                    </div>
+                    <div><div style={{ fontSize:11, color:'var(--text-muted)' }}>Entregado</div><div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(d.entregadoAlquiler)}</div></div>
+                    <div style={{ textAlign:'right' }}><div style={{ fontSize:11, color:'var(--text-muted)' }}>Pendiente</div><div style={{ fontSize:14, fontWeight:600, color: d.restanteAlquiler > 0 ? '#993C1D' : '#4A7C3F' }}>{d.restanteAlquiler > 0 ? fmtTn(d.restanteAlquiler) : '✓ Completo'}</div></div>
                   </div>
-                  <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}>
-                    <div style={{ height:8, borderRadius:4, background:'#A0714F', width:`${Math.min(d.alquiler > 0 ? d.entregadoAlquiler/d.alquiler*100 : 0, 100)}%`, transition:'width .5s' }}/>
-                  </div>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>
-                    {d.alquiler > 0 ? Math.round(d.entregadoAlquiler/d.alquiler*100) : 0}% entregado
-                  </div>
+                  <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}><div style={{ height:8, borderRadius:4, background:'#A0714F', width:`${Math.min(d.alquiler > 0 ? d.entregadoAlquiler/d.alquiler*100 : 0, 100)}%`, transition:'width .5s' }}/></div>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>{d.alquiler > 0 ? Math.round(d.entregadoAlquiler/d.alquiler*100) : 0}% entregado</div>
                 </div>
-
-                {/* Fer */}
                 {[
                   { nombre:'Fer', cuota: d.cuotaFer, vendido: d.vendidoFer, restante: d.restanteFer, col:'#4A7C3F', bg:'#F0F7EE', border:'#9DC87A' },
                   { nombre:'Leo', cuota: d.cuotaLeo, vendido: d.vendidoLeo, restante: d.restanteLeo, col:'#C8A96E', bg:'#FAF5EC', border:'#D8C9A8' },
                 ].map(p => (
                   <div key={p.nombre} style={{ background: p.bg, border:`1px solid ${p.border}`, borderRadius:10, padding:'14px' }}>
-                    <div style={{ fontSize:10, fontWeight:600, color: p.col, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
-                      {p.nombre}
-                    </div>
-                    <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>
-                      {Math.round(ALQUILER_PCT*50*2)/1}% del total · 50% del disponible
-                    </div>
-                    <div style={{ marginBottom:8 }}>
-                      <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div>
-                      <div style={{ fontSize:18, fontWeight:600, color: p.col }}>{fmtTn(p.cuota)}</div>
-                    </div>
+                    <div style={{ fontSize:10, fontWeight:600, color: p.col, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>{p.nombre}</div>
+                    <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>50% del disponible</div>
+                    <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div><div style={{ fontSize:18, fontWeight:600, color: p.col }}>{fmtTn(p.cuota)}</div></div>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                      <div>
-                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>Ya vendió</div>
-                        <div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(p.vendido)}</div>
-                      </div>
-                      <div style={{ textAlign:'right' }}>
-                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>Le queda</div>
-                        <div style={{ fontSize:14, fontWeight:600, color: p.restante > 0 ? '#993C1D' : '#4A7C3F' }}>
-                          {p.restante > 0 ? fmtTn(p.restante) : '✓ Todo vendido'}
-                        </div>
-                      </div>
+                      <div><div style={{ fontSize:11, color:'var(--text-muted)' }}>Ya vendió</div><div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(p.vendido)}</div></div>
+                      <div style={{ textAlign:'right' }}><div style={{ fontSize:11, color:'var(--text-muted)' }}>Le queda</div><div style={{ fontSize:14, fontWeight:600, color: p.restante > 0 ? '#993C1D' : '#4A7C3F' }}>{p.restante > 0 ? fmtTn(p.restante) : '✓ Todo vendido'}</div></div>
                     </div>
-                    <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}>
-                      <div style={{ height:8, borderRadius:4, background: p.col, width:`${Math.min(p.cuota > 0 ? p.vendido/p.cuota*100 : 0, 100)}%`, transition:'width .5s' }}/>
-                    </div>
-                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>
-                      {p.cuota > 0 ? Math.round(p.vendido/p.cuota*100) : 0}% vendido
-                    </div>
+                    <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}><div style={{ height:8, borderRadius:4, background: p.col, width:`${Math.min(p.cuota > 0 ? p.vendido/p.cuota*100 : 0, 100)}%`, transition:'width .5s' }}/></div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>{p.cuota > 0 ? Math.round(p.vendido/p.cuota*100) : 0}% vendido</div>
                   </div>
                 ))}
               </div>
