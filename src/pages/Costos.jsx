@@ -807,10 +807,10 @@ export default function Costos({ dolares }) {
   const [ivaMode2, setIvaMode2] = useState('sin')
   const [producto, setProducto] = useState('')
 
-  const { user, puedeVer } = useAuth()
+  const { user, puedeVer, puedeEditar, isAdmin } = useAuth()
   const usuario = user?.email || user?.user_metadata?.nombre || 'desconocido'
-  // Puede eliminar: quien tenga el permiso 'eliminar_costos' o sea admin
-  const puedeEliminar = puedeVer ? puedeVer('admin') : false
+  // Puede eliminar: admin O cualquiera con acceso de edición a costos
+  const puedeEliminar = isAdmin || puedeEditar('costos')
 
   const [fCampanha, setFCampanha] = useState([])
   const [fMes, setFMes] = useState([])
