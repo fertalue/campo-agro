@@ -352,6 +352,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const addExtraItem = () => setExtraItems(prev => [...prev, {
     producto_servicio: '', precio_unitario: '', cantidad: '1',
     unidad: form.unidad || 'USD/ha', iva_pct: form.iva_pct ?? 0.21, iva_incluido: false,
+    marca: '', presentacion: '', contenido_por_unidad: '', unidad_base: '',
+    showNorm: false,
   }])
   const removeExtraItem = (idx) => setExtraItems(prev => prev.filter((_, i) => i !== idx))
   const updateExtraItem = (idx, k, v) => setExtraItems(prev => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it))
@@ -517,6 +519,9 @@ function FormCosto({ onSave, onCancel, dolar }) {
         const totSin_ = puSin_ * cnt_
         const totIva_ = totSin_ * iva_
         const totCon_ = totSin_ + totIva_
+        const puBase_ = item.precio_unitario && item.contenido_por_unidad
+          ? parseFloat(item.precio_unitario) / parseFloat(item.contenido_por_unidad)
+          : null
         await db.costos.insert({
           fecha: form.fecha, quien_carga: form.quien_carga, campanha: form.campanha,
           centro_costos: form.centro_costos, proveedor: form.proveedor, concepto: form.concepto,
@@ -528,6 +533,10 @@ function FormCosto({ onSave, onCancel, dolar }) {
           producto_servicio: item.producto_servicio || null,
           precio_unitario: pu_ || null, cantidad: cnt_, unidad: item.unidad || null,
           iva_pct: iva_, iva_incluido: item.iva_incluido,
+          marca: clean(item.marca), presentacion: clean(item.presentacion),
+          contenido_por_unidad: parseFloat(item.contenido_por_unidad) || null,
+          unidad_base: clean(item.unidad_base),
+          precio_por_unidad_base: puBase_,
           precio_total_sin_iva: toUSD_(totSin_) || null, monto_usd: toUSD_(totSin_) || null,
           monto_iva: toUSD_(totIva_) || null, valor_total_iva_usd: toUSD_(totIva_) || null,
           precio_total_con_iva: toUSD_(totCon_) || null, precio_total_usd: toUSD_(totCon_) || null,
@@ -740,7 +749,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
                     <button type="button" onClick={() => removeExtraItem(idx)}
                       style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #F0997B', background: '#FAECE7', color: '#993C1D', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0 }}>×</button>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>IVA:</span>
                     {[['No incluido', false], ['Incluido en precio', true]].map(([lbl, val]) => (
                       <button key={lbl} type="button" onClick={() => updateExtraItem(idx, 'iva_incluido', val)}
@@ -748,7 +757,46 @@ function FormCosto({ onSave, onCancel, dolar }) {
                         {lbl}
                       </button>
                     ))}
+                    <button type="button" onClick={() => updateExtraItem(idx, 'showNorm', !item.showNorm)}
+                      style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: item.showNorm ? '#F5F0E8' : 'transparent', color: 'var(--barro)', borderColor: item.showNorm ? '#D8C9A8' : 'var(--border)' }}>
+                      {item.showNorm ? '▴ Ocultar normalización' : '▾ Normalizar precio'}
+                    </button>
                   </div>
+                  {item.showNorm && (
+                    <div style={{ marginTop: 8, background: '#FAF7F0', border: '1px solid #E8D5A3', borderRadius: 7, padding: '10px 12px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--barro)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Normalizar precio</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Marca</div>
+                          <input value={item.marca} onChange={e => updateExtraItem(idx, 'marca', e.target.value)}
+                            placeholder="Nufarm, Sigma..." style={si_} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Presentación</div>
+                          <input value={item.presentacion} onChange={e => updateExtraItem(idx, 'presentacion', e.target.value)}
+                            placeholder="bidón 20L..." style={si_} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Contenido por unidad</div>
+                          <input type="number" value={item.contenido_por_unidad} onChange={e => updateExtraItem(idx, 'contenido_por_unidad', e.target.value)}
+                            placeholder="20" style={si_} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Unidad base</div>
+                          <input value={item.unidad_base} onChange={e => updateExtraItem(idx, 'unidad_base', e.target.value)}
+                            placeholder="L, Kg, tn..." style={si_} />
+                        </div>
+                      </div>
+                      {item.precio_unitario && item.contenido_por_unidad && (
+                        <div style={{ marginTop: 8, padding: '6px 10px', background: 'white', borderRadius: 5, border: '1px solid #D8C9A8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: 'var(--arcilla)' }}>Precio por {item.unidad_base || 'unidad base'}:</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--musgo)' }}>
+                            U$S {(parseFloat(item.precio_unitario) / parseFloat(item.contenido_por_unidad)).toFixed(4)} / {item.unidad_base || '?'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
