@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import SearchableSelect from '../components/SearchableSelect'
 
 const CENTROS = ['Producción','Costos únicos','Comercializacion','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
+const CONCEPTOS = ['Compra','NC','ND','Otro']
 const TIPOS_PAGO = ['Canje','Cta Cte','Contado','Redagro360','Redagro270','Cheque','Transferencia']
 const IVA_OPTS = [{ label: '0%', val: 0 },{ label: '10.5%', val: 0.105 },{ label: '21%', val: 0.21 }]
 const CAMPANHAS = ['25-26','24-25','23-24','22-23']
@@ -146,6 +147,7 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
   const [form, setForm] = useState({
     fecha:             costo.fecha || '',
     campanha:          costo.campanha || '',
+    concepto:          costo.concepto || 'Compra',
     proveedor:         costo.proveedor || '',
     producto_servicio: costo.producto_servicio || '',
     centro_costos:     costo.centro_costos || '',
@@ -193,6 +195,12 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
       <td style={cell}><input type="date" value={form.fecha} onChange={e => f('fecha', e.target.value)} style={si} /></td>
       {/* 2 Campaña */}
       <td style={cell}><input value={form.campanha} onChange={e => f('campanha', e.target.value)} style={si} /></td>
+      {/* 2b Concepto */}
+      <td style={cell}>
+        <select value={form.concepto} onChange={e => f('concepto', e.target.value)} style={{...si, width: 90}}>
+          {CONCEPTOS.map(o => <option key={o}>{o}</option>)}
+        </select>
+      </td>
       {/* 3 Proveedor */}
       <td style={cell}><input value={form.proveedor} onChange={e => f('proveedor', e.target.value)} style={{ ...si, fontWeight: 500 }} /></td>
       {/* 4 Producto */}
@@ -626,7 +634,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Proveedor</label>{sel('proveedor', [], true)}</div>
-          <div className="field"><label className="label">Concepto</label>{sel('concepto', ['Compra','Servicio','NC','ND','Otro'])}</div>
+          <div className="field"><label className="label">Concepto</label>{sel('concepto', CONCEPTOS)}</div>
         </div>
         <div className="field"><label className="label">Producto / Servicio</label>
           <SearchableSelect value={form.producto_servicio} onChange={v => f('producto_servicio', v)}
@@ -1173,7 +1181,7 @@ export default function Costos({ dolares }) {
               : filteredDetalle.length === 0 ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Sin registros con estos filtros</div>
                 : <table className="c-tbl">
                   <thead><tr>
-                    <th>Fecha</th><th>Campaña</th><th>Proveedor</th><th>Producto / Servicio</th>
+                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
                     <th>Sin IVA (USD)</th><th>IVA (USD)</th><th>Con IVA (USD)</th><th>Otros imp. (USD)</th><th>Total (USD)</th>
                     <th>Sin IVA (ARS)</th><th>Con IVA (ARS)</th><th>Otros imp. (ARS)</th><th>Total (ARS)</th>
@@ -1222,6 +1230,7 @@ export default function Costos({ dolares }) {
                         <tr key={c.id}>
                           <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.fecha ? new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
                           <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.campanha || '—'}</td>
+                          <td><span className="cc chip-muted" style={{ whiteSpace:'nowrap', background: c.concepto==='NC'?'#E4F0F4':c.concepto==='ND'?'#F5EDD8':'#EFECE4', color: c.concepto==='NC'?'#2C5A6A':c.concepto==='ND'?'#6B3E22':'#7A6040' }}>{c.concepto||'Compra'}</span></td>
                           <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{c.proveedor}</td>
                           <td style={{ color: 'var(--suelo)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.producto_servicio}</td>
                           <td><span className="cc chip-muted" style={{ whiteSpace: 'nowrap' }}>{c.centro_costos}</span></td>
