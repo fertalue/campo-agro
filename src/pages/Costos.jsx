@@ -960,15 +960,37 @@ export default function Costos({ dolares }) {
     return true
   })
 
-  const busquedaLower = busqueda.toLowerCase()
-  const filteredDetalle = busqueda ? filtered.filter(c =>
-    [c.proveedor, c.producto_servicio, c.centro_costos, c.factura_numero,
-     c.tipo_pago, c.factura_nombre, c.campanha, c.mes_canje, c.comentarios,
-     c.quien_carga, c.moneda, c.concepto]
-    .some(v => v && String(v).toLowerCase().includes(busquedaLower)) ||
+  const busquedaLower = busqueda.toLowerCase().trim()
+
+  // Soporte para búsquedas por campo: "concepto:NC", "proveedor:fullagro", "tipo:canje", etc.
+  const CAMPO_MAP = {
+    concepto: c => c.concepto,
+    proveedor: c => c.proveedor,
+    producto: c => c.producto_servicio,
+    centro: c => c.centro_costos,
+    tipo: c => c.tipo_pago,
+    factura: c => c.factura_nombre,
+    campanha: c => c.campanha,
+    mes: c => c.mes_canje,
+    quien: c => c.quien_carga,
+    moneda: c => c.moneda,
+  }
+  const campoMatch = busquedaLower.match(/^(\w+):(.+)$/)
+  const filteredDetalle = !busquedaLower ? filtered : filtered.filter(c => {
+    if (campoMatch) {
+      const [, campo, valor] = campoMatch
+      const getter = CAMPO_MAP[campo]
+      if (getter) return String(getter(c) || '').toLowerCase().includes(valor.trim())
+    }
+    // Búsqueda libre en todos los campos
+    return [
+      c.proveedor, c.producto_servicio, c.centro_costos, c.factura_numero,
+      c.tipo_pago, c.factura_nombre, c.campanha, c.mes_canje, c.comentarios,
+      c.quien_carga, c.moneda, c.concepto
+    ].some(v => v && String(v).toLowerCase().includes(busquedaLower)) ||
     (c.monto_usd && String(c.monto_usd).includes(busqueda)) ||
     (c.fecha && c.fecha.includes(busqueda))
-  ) : filtered
+  })
 
   const gm = c => ivaMode === 'sin'
     ? (c.precio_total_sin_iva || c.monto_usd || 0)
@@ -1168,7 +1190,7 @@ export default function Costos({ dolares }) {
             </svg>
             <input
               value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar en todas las columnas: proveedor, producto, N° factura, mes canje, comentarios..."
+              placeholder="Buscar por proveedor, producto, N° factura... o usar concepto:NC, tipo:canje, proveedor:fullagro"
               style={{ width: '100%', padding: '9px 12px 9px 32px', border: '1px solid #D8C9A8', borderRadius: 8, fontSize: 13, background: '#FDFAF4', color: 'var(--tierra)', fontFamily: 'inherit' }}
             />
             {busqueda && (
