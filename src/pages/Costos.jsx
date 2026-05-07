@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { db, exportCSV, getMaestros, clearMaestrosCache } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -310,7 +310,7 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
   )
 }
 
-// ── Formulario ───────────────────────────────────────────────────────────────
+// ── FormCosto — items unificados + total corriente ──────────────────────────
 function FormCosto({ onSave, onCancel, dolar }) {
   const fileRef = useRef()
   const [foto, setFoto] = useState(null)
@@ -319,10 +319,8 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const [iaMsg, setIaMsg] = useState('')
   const [opts, setOpts] = useState({
     proveedor: [], producto: [], marca: [], quien_carga: ['Fer','Leo','Gise'],
-    centro_costos: [], concepto: [], unidad: [], moneda: [],
-    factura_nombre: [], tipo_pago: [], mes_canje: []
+    centro_costos: [], concepto: [], unidad: [], moneda: [], factura_nombre: [], tipo_pago: [], mes_canje: []
   })
-
   useEffect(() => {
     const tipos = ['proveedor','producto','marca','centro_costos','concepto','unidad','moneda','factura_nombre','tipo_pago','mes_canje']
     Promise.all(tipos.map(t => getMaestros(t))).then(results => {
@@ -336,281 +334,157 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
     quien_carga: 'Gise', concepto: 'Compra', campanha: '25-26',
-    centro_costos: 'Producción', producto_servicio: '', proveedor: '',
-    precio_unitario: '', unidad: 'USD/ha', cantidad: '',
-    marca: '', presentacion: '', contenido_por_unidad: '', unidad_base: '',
+    centro_costos: 'Produccion', proveedor: '', factura_numero: '',
     moneda: 'ARS', cotizacion_usd: dolar || '',
-    iva_incluido: false, iva_pct: 0.21,
-    factura_nombre: 'ambos', con_sin_factura: 'Con Factura',
-    tipo_pago: 'Canje', mes_canje: '', dia_pago: '', check_pago: false, comentarios: '',
+    factura_nombre: 'ambos', tipo_pago: 'Canje', mes_canje: '', dia_pago: '',
+    check_pago: false, comentarios: '',
     carga_especial: false, monto_total_factura: '', iva_total_factura: '', otros_imp_total_factura: '',
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  // ── Ítems adicionales de la misma factura ─────────────────────
-  const [extraItems, setExtraItems] = useState([])
-  const addExtraItem = () => setExtraItems(prev => [...prev, {
+  const emptyItem = (prev) => ({
     producto_servicio: '', precio_unitario: '', cantidad: '1',
-    unidad: form.unidad || 'USD/ha', iva_pct: form.iva_pct ?? 0.21, iva_incluido: false,
-    marca: '', presentacion: '', contenido_por_unidad: '', unidad_base: '',
-    showNorm: false,
-  }])
-  const removeExtraItem = (idx) => setExtraItems(prev => prev.filter((_, i) => i !== idx))
-  const updateExtraItem = (idx, k, v) => setExtraItems(prev => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it))
-
+    unidad: prev?.unidad || 'USD/ha', iva_pct: prev?.iva_pct ?? 0.21, iva_incluido: false,
+    marca: '', presentacion: '', contenido_por_unidad: '', unidad_base: '', showNorm: false,
+  })
+  const [items, setItems] = useState([emptyItem()])
+  const addItem    = () => setItems(prev => [...prev, emptyItem(prev[prev.length - 1])])
+  const removeItem = (idx) => setItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)
+  const updateItem = (idx, k, v) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it))
   const [cotizMsg, setCotizMsg] = useState('')
 
-  // ── Agregar valor nuevo a maestros al vuelo ─────────────────────
   async function addToMaestros(tipo, valor) {
     if (!valor?.trim()) return
     await supabase.from('maestros').insert({ tipo, valor: valor.trim(), activo: true, orden: 999 })
     clearMaestrosCache()
-    setOpts(prev => ({
-      ...prev,
-      [tipo]: [...new Set([...(prev[tipo] || []), valor.trim()])].sort()
-    }))
+    setOpts(prev => ({ ...prev, [tipo]: [...new Set([...(prev[tipo] || []), valor.trim()])].sort() }))
   }
 
-  // Cotización del día de la factura
   async function fetchCotizFecha(fecha) {
     if (!fecha) return
-    const { data } = await supabase
-      .from('cotizaciones_usd').select('venta').eq('fecha', fecha).eq('tipo', 'oficial').maybeSingle()
-    if (data?.venta) {
-      setForm(p => ({ ...p, cotizacion_usd: data.venta }))
-      setCotizMsg('')
-    } else {
-      setForm(p => ({ ...p, cotizacion_usd: '' }))
-      setCotizMsg('⚠ No hay cotización guardada para esta fecha. Ingresá el valor manualmente.')
+    const { data } = await supabase.from('cotizaciones_usd').select('venta').eq('fecha', fecha).eq('tipo', 'oficial').maybeSingle()
+    if (data?.venta) { setForm(p => ({ ...p, cotizacion_usd: data.venta })); setCotizMsg('') }
+    else { setForm(p => ({ ...p, cotizacion_usd: '' })); setCotizMsg('No hay cotizacion para esta fecha. Ingresa el valor manualmente.') }
+  }
+
+  const cotiz = parseFloat(form.cotizacion_usd) || 1
+  const esARS = form.moneda === 'ARS'
+  const toUSD = v => esARS ? v / cotiz : v
+  const toARS = v => esARS ? v : v * cotiz
+
+  function calcItem(item) {
+    const pu  = parseFloat(item.precio_unitario) || 0
+    const iva = item.iva_pct || 0
+    const cnt = parseFloat(item.cantidad) || 1
+    const puSin = item.iva_incluido ? pu / (1 + iva) : pu
+    const totSin = puSin * cnt
+    const totIva = totSin * iva
+    const totCon = totSin + totIva
+    return {
+      totSin, totIva, totCon,
+      totSinUSD: toUSD(totSin), totConUSD: toUSD(totCon),
+      totSinARS: toARS(totSin), totConARS: toARS(totCon),
+      puBase: item.precio_unitario && item.contenido_por_unidad
+        ? parseFloat(item.precio_unitario) / parseFloat(item.contenido_por_unidad) : null,
     }
   }
 
-  // ── Cálculo completo ARS y USD ──────────────────────────────────
-  const cotiz    = parseFloat(form.cotizacion_usd) || 1
-  const cant     = parseFloat(form.cantidad) || 1
-  const puRaw    = parseFloat(form.precio_unitario) || 0
-  const ivaPct   = form.iva_pct || 0
+  const totFact = items.reduce((acc, it) => {
+    const c = calcItem(it)
+    return { sinUSD: acc.sinUSD + c.totSinUSD, conUSD: acc.conUSD + c.totConUSD, sinARS: acc.sinARS + c.totSinARS, conARS: acc.conARS + c.totConARS }
+  }, { sinUSD: 0, conUSD: 0, sinARS: 0, conARS: 0 })
 
-  // Precio unitario sin IVA (en moneda original)
-  const puSinIva  = form.iva_incluido ? puRaw / (1 + ivaPct) : puRaw
-  const puIva     = puSinIva * ivaPct
-  const puConIva  = puSinIva * (1 + ivaPct)
-
-  // Totales en moneda original
-  const totalSinIva  = puSinIva * cant
-  const totalIva     = totalSinIva * ivaPct
-  const totalConIva  = totalSinIva * (1 + ivaPct)
-
-  // Conversión a ARS y USD
-  const esARS = form.moneda === 'ARS'
-  const toARS = (v) => esARS ? v : v * cotiz
-  const toUSD = (v) => esARS ? v / cotiz : v
-
-  // ARS
-  const puSinIva_ars  = toARS(puSinIva)
-  const puIva_ars     = toARS(puIva)
-  const puConIva_ars  = toARS(puConIva)
-  const totSinIva_ars = toARS(totalSinIva)
-  const totIva_ars    = toARS(totalIva)
-  const totConIva_ars = toARS(totalConIva)
-
-  // USD
-  const puSinIva_usd  = toUSD(puSinIva)
-  const puIva_usd     = toUSD(puIva)
-  const puConIva_usd  = toUSD(puConIva)
-  const totSinIva_usd = toUSD(totalSinIva)
-  const totIva_usd    = toUSD(totalIva)
-  const totConIva_usd = toUSD(totalConIva)
-
-  // Aliases para compatibilidad con código existente
-  const usdSin = totSinIva_usd
-  const usdCon = totConIva_usd
-  const monto  = totalSinIva
-
-  // Cálculo carga especial
   const montoTotalFact    = parseFloat(form.monto_total_factura) || 0
   const ivaTotalFact      = parseFloat(form.iva_total_factura) || 0
   const otrosImpTotalFact = parseFloat(form.otros_imp_total_factura) || 0
-  const montoRelacionado  = totalSinIva  // ya calculado arriba
+  const montoRelacionado  = esARS ? totFact.sinARS : totFact.sinUSD
   const proporcion        = montoTotalFact > 0 ? montoRelacionado / montoTotalFact : 0
-  const otrosImpRelacionado = otrosImpTotalFact * proporcion
-  const otrosImpUSD         = toUSD(otrosImpRelacionado)
-  const otrosImpARS         = toARS(otrosImpRelacionado)
+  const otrosImpUSD       = toUSD(otrosImpTotalFact * proporcion)
+  const otrosImpARS       = toARS(otrosImpTotalFact * proporcion)
 
   async function submit(e) {
     e.preventDefault()
-    // Validaciones antes de guardar
-    const esARS_check = form.moneda === 'ARS'
-    if (esARS_check && (!form.cotizacion_usd || parseFloat(form.cotizacion_usd) <= 0)) {
-      alert('⚠️ Falta la cotización USD. Ingresá el valor del dólar oficial para poder calcular el monto en USD.')
-      return
-    }
-    if (!form.precio_unitario || parseFloat(form.precio_unitario) <= 0) {
-      alert('⚠️ Falta el precio unitario.')
-      return
-    }
+    if (esARS && (!form.cotizacion_usd || parseFloat(form.cotizacion_usd) <= 0)) { alert('Falta la cotizacion USD.'); return }
+    const itemsValidos = items.filter(it => parseFloat(it.precio_unitario) > 0)
+    if (itemsValidos.length === 0) { alert('Agrega al menos un item con precio.'); return }
     setSaving(true)
-    const puBase = form.precio_unitario && form.contenido_por_unidad
-      ? (parseFloat(form.precio_unitario) / parseFloat(form.contenido_por_unidad))
-      : parseFloat(form.precio_unitario) || null
-    const payload = {
-      ...form,
-      precio_unitario: parseFloat(form.precio_unitario) || null,
-      cantidad: parseFloat(form.cantidad) || null,
-      cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
-      contenido_por_unidad: parseFloat(form.contenido_por_unidad) || null,
-      precio_por_unidad_base: puBase,
-      // ARS
-      precio_unitario_sin_iva_ars:  puSinIva_ars  || null,
-      valor_unitario_iva_ars:       puIva_ars      || null,
-      precio_unitario_con_iva_ars:  puConIva_ars   || null,
-      precio_total_sin_iva_ars:     totSinIva_ars  || null,
-      valor_total_iva_ars:          totIva_ars      || null,
-      precio_total_con_iva_ars:     totConIva_ars   || null,
-      valor_total_otros_imp_ars:    form.carga_especial ? otrosImpARS : null,
-      precio_total_ars:             (totConIva_ars + (form.carga_especial ? otrosImpARS : 0)) || null,
-      // USD
-      precio_unitario_sin_iva_usd:  puSinIva_usd  || null,
-      valor_unitario_iva_usd:       puIva_usd      || null,
-      precio_unitario_con_iva_usd:  puConIva_usd   || null,
-      precio_total_sin_iva:         totSinIva_usd  || null,
-      monto_usd:                    totSinIva_usd  || null,
-      monto_iva:                    totIva_usd      || null,
-      valor_total_iva_usd:          totIva_usd      || null,
-      precio_total_con_iva:         totConIva_usd   || null,
-      valor_total_otros_imp_usd:    form.carga_especial ? otrosImpUSD : null,
-      otros_impuestos:              form.carga_especial ? otrosImpUSD : null,
-      precio_total_usd:             (totConIva_usd + (form.carga_especial ? otrosImpUSD : 0)) || null,
+    const clean = v => (v === '' || v === undefined) ? null : v
+    let firstId = null
+    for (let i = 0; i < itemsValidos.length; i++) {
+      const item = itemsValidos[i]
+      const c = calcItem(item)
+      const isFirst = i === 0
+      const otrosU = isFirst && form.carga_especial ? otrosImpUSD : null
+      const otrosA = isFirst && form.carga_especial ? otrosImpARS : null
+      const { data, error } = await db.costos.insert({
+        fecha: form.fecha, quien_carga: form.quien_carga, campanha: form.campanha,
+        centro_costos: form.centro_costos, proveedor: form.proveedor, concepto: form.concepto,
+        moneda: form.moneda, cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
+        factura_nombre: clean(form.factura_nombre), factura_numero: clean(form.factura_numero),
+        tipo_pago: form.tipo_pago, mes_canje: clean(form.mes_canje),
+        dia_pago: clean(form.dia_pago), check_pago: form.check_pago || false,
+        comentarios: clean(form.comentarios),
+        carga_especial: isFirst ? form.carga_especial : false,
+        producto_servicio: clean(item.producto_servicio),
+        precio_unitario: parseFloat(item.precio_unitario) || null,
+        cantidad: parseFloat(item.cantidad) || null,
+        unidad: clean(item.unidad),
+        iva_pct: item.iva_pct || 0, iva_incluido: item.iva_incluido,
+        marca: clean(item.marca), presentacion: clean(item.presentacion),
+        contenido_por_unidad: parseFloat(item.contenido_por_unidad) || null,
+        unidad_base: clean(item.unidad_base),
+        precio_por_unidad_base: c.puBase,
+        precio_total_sin_iva: c.totSinUSD || null, monto_usd: c.totSinUSD || null,
+        monto_iva: toUSD(c.totIva) || null, valor_total_iva_usd: toUSD(c.totIva) || null,
+        precio_total_con_iva: c.totConUSD || null,
+        valor_total_otros_imp_usd: otrosU, otros_impuestos: otrosU,
+        precio_total_usd: ((c.totConUSD || 0) + (otrosU || 0)) || null,
+        precio_total_sin_iva_ars: c.totSinARS || null,
+        valor_total_iva_ars: toARS(c.totIva) || null,
+        precio_total_con_iva_ars: c.totConARS || null,
+        valor_total_otros_imp_ars: otrosA,
+        precio_total_ars: ((c.totConARS || 0) + (otrosA || 0)) || null,
+      })
+      if (error) { setSaving(false); alert('Error al guardar: ' + (error.message || JSON.stringify(error))); return }
+      if (i === 0 && data?.[0]?.id) firstId = data[0].id
     }
-    // Excluir campos temporales del form que no son columnas de la tabla
-    const { carga_especial, monto_total_factura, iva_total_factura,
-            otros_imp_total_factura, con_sin_factura, ...payloadLimpio } = payload
-    // Convertir strings vacíos en campos fecha/text a null
-    const clean = (v) => (v === '' || v === undefined) ? null : v
-    const { data, error } = await db.costos.insert({
-      ...payloadLimpio,
-      carga_especial,
-      otros_impuestos: payload.otros_impuestos || null,
-      dia_pago:  clean(payloadLimpio.dia_pago),
-      mes_canje: clean(payloadLimpio.mes_canje),
-      marca:     clean(payloadLimpio.marca),
-      presentacion: clean(payloadLimpio.presentacion),
-      unidad_base:  clean(payloadLimpio.unidad_base),
-    })
-    console.log('INSERT ERROR:', JSON.stringify(error))
-    console.log('PAYLOAD:', JSON.stringify(payloadLimpio))
-    if (error) {
-      setSaving(false)
-      alert('❌ Error al guardar: ' + (error.message || JSON.stringify(error)))
-      return
-    }
-    // ── Guardar ítems adicionales ────────────────────────────────────────
-    if (extraItems.length > 0) {
-      const cotiz_ = parseFloat(form.cotizacion_usd) || 1
-      const esARS_ = form.moneda === 'ARS'
-      const toUSD_ = v => esARS_ ? v / cotiz_ : v
-      const toARS_ = v => esARS_ ? v : v * cotiz_
-      for (const item of extraItems) {
-        if (!item.producto_servicio && !parseFloat(item.precio_unitario)) continue
-        const pu_ = parseFloat(item.precio_unitario) || 0
-        const iva_ = item.iva_pct || 0
-        const cnt_ = parseFloat(item.cantidad) || 1
-        const puSin_ = item.iva_incluido ? pu_ / (1 + iva_) : pu_
-        const totSin_ = puSin_ * cnt_
-        const totIva_ = totSin_ * iva_
-        const totCon_ = totSin_ + totIva_
-        const puBase_ = item.precio_unitario && item.contenido_por_unidad
-          ? parseFloat(item.precio_unitario) / parseFloat(item.contenido_por_unidad)
-          : null
-        await db.costos.insert({
-          fecha: form.fecha, quien_carga: form.quien_carga, campanha: form.campanha,
-          centro_costos: form.centro_costos, proveedor: form.proveedor, concepto: form.concepto,
-          moneda: form.moneda, cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
-          factura_nombre: clean(form.factura_nombre), factura_numero: clean(form.factura_numero),
-          tipo_pago: form.tipo_pago, mes_canje: clean(form.mes_canje),
-          dia_pago: clean(form.dia_pago), check_pago: form.check_pago || false,
-          comentarios: clean(form.comentarios), carga_especial: false,
-          producto_servicio: item.producto_servicio || null,
-          precio_unitario: pu_ || null, cantidad: cnt_, unidad: item.unidad || null,
-          iva_pct: iva_, iva_incluido: item.iva_incluido,
-          marca: clean(item.marca), presentacion: clean(item.presentacion),
-          contenido_por_unidad: parseFloat(item.contenido_por_unidad) || null,
-          unidad_base: clean(item.unidad_base),
-          precio_por_unidad_base: puBase_,
-          precio_total_sin_iva: toUSD_(totSin_) || null, monto_usd: toUSD_(totSin_) || null,
-          monto_iva: toUSD_(totIva_) || null, valor_total_iva_usd: toUSD_(totIva_) || null,
-          precio_total_con_iva: toUSD_(totCon_) || null, precio_total_usd: toUSD_(totCon_) || null,
-          precio_total_sin_iva_ars: toARS_(totSin_) || null, valor_total_iva_ars: toARS_(totIva_) || null,
-          precio_total_con_iva_ars: toARS_(totCon_) || null, precio_total_ars: toARS_(totCon_) || null,
-        })
-      }
-    }
-    if (!error && foto && data?.[0]?.id) {
-      const url = await db.uploadFoto(foto, data[0].id)
-      await db.costos.update(data[0].id, { foto_url: url })
-    }
+    if (foto && firstId) { const url = await db.uploadFoto(foto, firstId); await db.costos.update(firstId, { foto_url: url }) }
     setSaving(false); onSave()
   }
 
   async function leerFactura() {
     if (!foto) return
-    setLeyendoIA(true)
-    setIaMsg('Leyendo imagen...')
+    setLeyendoIA(true); setIaMsg('Leyendo imagen...')
     try {
-      const base64 = await new Promise((res, rej) => {
-        const r = new FileReader()
-        r.onload = () => res(r.result.split(',')[1])
-        r.onerror = rej
-        r.readAsDataURL(foto)
-      })
-      const mediaType = foto.type || 'image/jpeg'
+      const base64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(foto) })
       setIaMsg('Analizando con IA...')
-      const resp = await fetch('/api/analizar-factura', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, mediaType })
-      })
+      const resp = await fetch('/api/analizar-factura', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ base64, mediaType: foto.type || 'image/jpeg' }) })
       const data = await resp.json()
-      if (!resp.ok) throw new Error(`API ${resp.status}: ${data?.error?.message || JSON.stringify(data)}`)
-      const text = data.content?.[0]?.text || ''
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-      setIaMsg('✓ Datos cargados')
-      if (parsed.proveedor)       f('proveedor', parsed.proveedor)
-      if (parsed.fecha) {
-        // Validar que el año sea razonable (2024-2030)
-        const yearParsed = parseInt(parsed.fecha.slice(0, 4))
-        if (yearParsed >= 2024 && yearParsed <= 2030) {
-          f('fecha', parsed.fecha)
-          fetchCotizFecha(parsed.fecha)
-        } else {
-          setIaMsg(`⚠ La IA detectó año ${yearParsed} — parece incorrecto. Verificá la fecha manualmente.`)
-        }
-      }
-      if (parsed.factura_numero)  f('factura_numero', parsed.factura_numero)
-      if (parsed.producto_servicio) f('producto_servicio', parsed.producto_servicio)
-      if (parsed.precio_unitario != null) f('precio_unitario', String(parsed.precio_unitario))
-      if (parsed.cantidad != null)        f('cantidad', String(parsed.cantidad))
-      if (parsed.moneda)          f('moneda', parsed.moneda)
-      if (parsed.iva_pct != null) f('iva_pct', parsed.iva_pct)
-      if (parsed.iva_incluido != null) f('iva_incluido', parsed.iva_incluido)
+      if (!resp.ok) throw new Error('API ' + resp.status)
+      const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim())
+      setIaMsg('Datos cargados')
+      if (parsed.proveedor) f('proveedor', parsed.proveedor)
+      if (parsed.fecha) { const yr = parseInt(parsed.fecha.slice(0, 4)); if (yr >= 2024 && yr <= 2030) { f('fecha', parsed.fecha); fetchCotizFecha(parsed.fecha) } }
+      if (parsed.factura_numero) f('factura_numero', parsed.factura_numero)
+      if (parsed.moneda) f('moneda', parsed.moneda)
       if (parsed.monto_total_factura) f('monto_total_factura', String(parsed.monto_total_factura))
-      if (parsed.iva_total)       f('iva_total_factura', String(parsed.iva_total))
+      if (parsed.iva_total) f('iva_total_factura', String(parsed.iva_total))
       if (parsed.otros_impuestos_total) f('otros_imp_total_factura', String(parsed.otros_impuestos_total))
       if (parsed.tiene_items_no_campo) f('carga_especial', true)
+      if (parsed.producto_servicio) updateItem(0, 'producto_servicio', parsed.producto_servicio)
+      if (parsed.precio_unitario != null) updateItem(0, 'precio_unitario', String(parsed.precio_unitario))
+      if (parsed.cantidad != null) updateItem(0, 'cantidad', String(parsed.cantidad))
+      if (parsed.iva_pct != null) updateItem(0, 'iva_pct', parsed.iva_pct)
+      if (parsed.iva_incluido != null) updateItem(0, 'iva_incluido', parsed.iva_incluido)
       setTimeout(() => setIaMsg(''), 4000)
-    } catch (err) {
-      console.error('IA error:', err)
-      setIaMsg('Error: ' + (err?.message || JSON.stringify(err)))
-      setTimeout(() => setIaMsg(''), 8000)
-    }
+    } catch (err) { setIaMsg('Error: ' + String(err)); setTimeout(() => setIaMsg(''), 8000) }
     setLeyendoIA(false)
   }
 
   const inp = (k, type, ph) => <input className="input" type={type} value={form[k]} placeholder={ph} onChange={e => f(k, e.target.value)} style={{ width: '100%' }} />
   const sel = (k, fallbackOpts, addNew = false) => (
     <SearchableSelect value={form[k]} onChange={v => f(k, v)}
-      options={opts[k]?.length ? opts[k] : fallbackOpts}
-      placeholder="Seleccioná..."
+      options={opts[k]?.length ? opts[k] : fallbackOpts} placeholder="Selecciona..."
       onAddNew={addNew ? v => addToMaestros(k, v) : null} />
   )
 
@@ -618,338 +492,203 @@ function FormCosto({ onSave, onCancel, dolar }) {
     <div className="card mb-3" style={{ background: '#F9F6EE', borderColor: 'var(--paja)' }}>
       <h3 style={{ marginBottom: 16 }}>Nueva factura</h3>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
         <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${foto ? 'var(--pasto)' : 'var(--border)'}`, borderRadius: 8, padding: '12px 16px', textAlign: 'center', cursor: 'pointer', background: foto ? 'var(--verde-light)' : 'transparent', fontSize: 12, color: foto ? 'var(--musgo)' : 'var(--text-muted)' }}>
-          {foto ? `✓ ${foto.name}` : 'Foto de factura (opcional)'}
+          {foto ? foto.name : 'Foto de factura (opcional)'}
         </div>
         <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => setFoto(e.target.files[0])} />
         {foto && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button type="button" onClick={leerFactura} disabled={leyendoIA}
-              style={{ padding: '8px 16px', borderRadius: 7, fontSize: 13, cursor: leyendoIA ? 'wait' : 'pointer', border: '1px solid', fontFamily: 'inherit', background: leyendoIA ? '#F5F0E4' : 'var(--pasto)', color: leyendoIA ? 'var(--arcilla)' : '#F5F0E4', borderColor: leyendoIA ? 'var(--border)' : 'var(--pasto)', fontWeight: 500, transition: 'all .2s' }}>
-              {leyendoIA ? '⏳ Analizando...' : '✨ Analizar con IA'}
+              style={{ padding: '8px 16px', borderRadius: 7, fontSize: 13, cursor: leyendoIA ? 'wait' : 'pointer', border: '1px solid', fontFamily: 'inherit', background: leyendoIA ? '#F5F0E4' : 'var(--pasto)', color: leyendoIA ? 'var(--arcilla)' : '#F5F0E4', borderColor: leyendoIA ? 'var(--border)' : 'var(--pasto)', fontWeight: 500 }}>
+              {leyendoIA ? 'Analizando...' : 'Analizar con IA'}
             </button>
-            {iaMsg && <span style={{ fontSize: 12, color: iaMsg.startsWith('✓') ? 'var(--musgo)' : iaMsg.startsWith('Error') ? '#993C1D' : 'var(--arcilla)' }}>{iaMsg}</span>}
+            {iaMsg && <span style={{ fontSize: 12, color: 'var(--arcilla)' }}>{iaMsg}</span>}
           </div>
         )}
+
         <div className="grid-2">
           <div className="field"><label className="label">Fecha</label><input className="input" type="date" value={form.fecha} onChange={e => { f('fecha', e.target.value); fetchCotizFecha(e.target.value) }} style={{ width: '100%' }} /></div>
-          <div className="field"><label className="label">Quién carga</label>{sel('quien_carga', ['Fer','Leo','Gise'])}</div>
+          <div className="field"><label className="label">Quien carga</label>{sel('quien_carga', ['Fer','Leo','Gise'])}</div>
         </div>
         <div className="grid-2">
-          <div className="field"><label className="label">Campaña</label>
-            <SearchableSelect value={form.campanha} onChange={v => f('campanha', v)} options={CAMPANHAS} />
-          </div>
+          <div className="field"><label className="label">Campana</label><SearchableSelect value={form.campanha} onChange={v => f('campanha', v)} options={CAMPANHAS} /></div>
           <div className="field"><label className="label">Centro de costo</label>{sel('centro_costos', CENTROS)}</div>
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Proveedor</label>{sel('proveedor', [], true)}</div>
           <div className="field"><label className="label">Concepto</label>{sel('concepto', CONCEPTOS)}</div>
         </div>
-        <div className="field"><label className="label">Producto / Servicio</label>
-          <SearchableSelect value={form.producto_servicio} onChange={v => f('producto_servicio', v)}
-            options={opts.producto?.length ? opts.producto : []}
-            placeholder="Seleccioná o escribí..."
-            onAddNew={v => addToMaestros('producto', v)} />
-        </div>
-        <div className="grid-2">
-          <div className="field"><label className="label">Precio unitario</label>{inp('precio_unitario', 'number', '0.00')}</div>
-          <div className="field"><label className="label">Unidad facturada</label>{sel('unidad', ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa'], true)}</div>
-        </div>
-
-        {/* Marca y normalización — campos opcionales */}
-        <div style={{ background: '#F5F0E8', border: '1px solid #E8D5A3', borderRadius: 8, padding: '12px 14px' }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--barro)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 10 }}>
-            Marca y normalización de precio (opcional)
-          </div>
-          <div className="grid-2" style={{ marginBottom: 10 }}>
-            <div className="field">
-              <label className="label">Marca</label>
-              <input className="input" value={form.marca} onChange={e => f('marca', e.target.value)} placeholder="Nufarm, Sigma, Pampa..." />
-            </div>
-            <div className="field">
-              <label className="label">Presentación comprada</label>
-              <input className="input" value={form.presentacion} onChange={e => f('presentacion', e.target.value)} placeholder="bidón 20L, bolsa 25kg, litro..." />
-            </div>
-          </div>
-          <div className="grid-2">
-            <div className="field">
-              <label className="label">Contenido por unidad ({form.unidad_base || 'L, Kg...'})</label>
-              <input className="input" type="number" step="0.01" value={form.contenido_por_unidad}
-                onChange={e => f('contenido_por_unidad', e.target.value)}
-                placeholder="20 (si bidón 20L), 25 (si bolsa 25kg)..." />
-            </div>
-            <div className="field">
-              <label className="label">Unidad base para comparar</label>
-              <input className="input" value={form.unidad_base} onChange={e => f('unidad_base', e.target.value)} placeholder="L, Kg, tn..." />
-            </div>
-          </div>
-          {form.precio_unitario && form.contenido_por_unidad && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: 'white', borderRadius: 6, border: '1px solid #D8C9A8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, color: 'var(--arcilla)' }}>
-                Precio por {form.unidad_base || 'unidad base'}:
-              </span>
-              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--musgo)' }}>
-                U$S {(parseFloat(form.precio_unitario) / parseFloat(form.contenido_por_unidad)).toFixed(4)} / {form.unidad_base || '?'}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="grid-2">
-          <div className="field"><label className="label">Cantidad</label>{inp('cantidad', 'number', '0')}</div>
-          <div className="field"><label className="label">Moneda</label>{sel('moneda', ['ARS','USD oficial','USD billete'])}</div>
-        </div>
         <div className="grid-2">
           <div className="field">
-            <label className="label">Cotización USD oficial {dolar ? `(hoy: ${dolar?.toLocaleString('es-AR')})` : ''}</label>
+            <label className="label">Cotizacion USD {dolar ? `(hoy: ${dolar?.toLocaleString('es-AR')})` : ''}</label>
             {inp('cotizacion_usd', 'number', '1478')}
             {cotizMsg && <div style={{ fontSize: 11, color: '#993C1D', marginTop: 4 }}>{cotizMsg}</div>}
           </div>
-          <div className="field"><label className="label">N° comprobante</label>{inp('factura_numero', 'text', 'A-0001-00012345')}</div>
+          <div className="field"><label className="label">Moneda</label>{sel('moneda', ['ARS','USD oficial','USD billete'])}</div>
         </div>
-        {(form.precio_unitario && form.cantidad) && (
-          <div style={{ background: 'var(--verde-light)', border: '1px solid var(--brote)', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Sin IVA (USD)</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--musgo)' }}>{fmtUSD(totSinIva_usd)}</div><div style={{ fontSize: 11, color: 'var(--musgo)', marginTop: 2, opacity: 0.7 }}>ARS {totSinIva_ars.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
-            <div><div style={{ fontSize: 11, color: 'var(--musgo)', marginBottom: 2 }}>Con IVA {(form.iva_pct * 100).toFixed(1)}% (USD)</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--arcilla)' }}>{fmtUSD(totConIva_usd)}</div><div style={{ fontSize: 11, color: 'var(--arcilla)', marginTop: 2, opacity: 0.7 }}>ARS {totConIva_ars.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
+        <div className="grid-2">
+          <div className="field"><label className="label">N comprobante</label>{inp('factura_numero', 'text', 'A-0001-00012345')}</div>
+          <div className="field"><label className="label">Factura a nombre de</label>{sel('factura_nombre', ['Fer','Leo','ambos','Sin factura'])}</div>
+        </div>
+
+        {/* TABLA DE ITEMS */}
+        <div style={{ border: '1px solid #E8D5A3', borderRadius: 8, overflow: 'visible' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 0.9fr 0.5fr 0.8fr 0.9fr 0.5fr 0.9fr 26px', gap: 6, padding: '6px 10px', background: '#EDE0C8', borderRadius: '7px 7px 0 0', fontSize: 10, fontWeight: 600, color: '#7A6040', textTransform: 'uppercase', letterSpacing: '0.04em', alignItems: 'center' }}>
+            <span>Producto / Servicio</span><span>Precio unit.</span><span>Cant.</span><span>Unidad</span><span>IVA %</span><span title="IVA incluido en precio">Inc.</span><span style={{ textAlign: 'right' }}>Subtotal USD</span><span></span>
           </div>
-        )}
-        {/* ── Ítems adicionales de la misma factura ──────────────────── */}
-        {extraItems.length > 0 && (
-          <div style={{ background: '#F5F0E8', border: '1px solid #E8D5A3', borderRadius: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, padding: '6px 10px', background: '#EDE0C8', borderRadius: '8px 8px 0 0', fontSize: 10, fontWeight: 600, color: '#7A6040', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              <span>Producto / Servicio</span><span>Precio</span><span>Cant.</span><span>Unidad</span><span>IVA</span><span style={{ textAlign: 'right' }}>Sub. USD</span><span></span>
-            </div>
-            {extraItems.map((item, idx) => {
-              const cotiz_ = parseFloat(form.cotizacion_usd) || 1
-              const esARS_ = form.moneda === 'ARS'
-              const pu_ = parseFloat(item.precio_unitario) || 0
-              const iva_ = item.iva_pct || 0
-              const puSin_ = item.iva_incluido ? pu_ / (1 + iva_) : pu_
-              const cnt_ = parseFloat(item.cantidad) || 1
-              const sub_ = esARS_ ? puSin_ * cnt_ * (1 + iva_) / cotiz_ : puSin_ * cnt_ * (1 + iva_)
-              const si_ = { padding: '5px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', width: '100%', background: '#FDFAF4' }
-              return (
-                <div key={idx} style={{ borderTop: '1px solid #E8D5A3', padding: '8px 10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.6fr 0.9fr 0.7fr 0.9fr 28px', gap: 6, alignItems: 'center' }}>
-                    <SearchableSelect value={item.producto_servicio} onChange={v => updateExtraItem(idx, 'producto_servicio', v)}
-                      options={opts.producto?.length ? opts.producto : []} placeholder="Producto..."
-                      onAddNew={v => addToMaestros('producto', v)} />
-                    <input type="number" value={item.precio_unitario} onChange={e => updateExtraItem(idx, 'precio_unitario', e.target.value)} placeholder="Precio" style={si_} />
-                    <input type="number" value={item.cantidad} onChange={e => updateExtraItem(idx, 'cantidad', e.target.value)} placeholder="1" style={si_} />
-                    <input list={`unidad-list-${idx}`} value={item.unidad} onChange={e => updateExtraItem(idx, 'unidad', e.target.value)} placeholder="Unidad" style={si_} />
-                    <datalist id={`unidad-list-${idx}`}>
-                      {(opts.unidad?.length ? opts.unidad : ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa']).map(u => <option key={u} value={u} />)}
-                    </datalist>
-                    <select value={item.iva_pct} onChange={e => updateExtraItem(idx, 'iva_pct', parseFloat(e.target.value))} style={{ ...si_, background: '#F5F0E4' }}>
-                      <option value={0}>0%</option><option value={0.105}>10.5%</option><option value={0.21}>21%</option>
-                    </select>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tierra)', textAlign: 'right' }}>
-                      {item.precio_unitario ? fmtUSD(sub_, 0) : '—'}
+
+          {items.map((item, idx) => {
+            const c = calcItem(item)
+            const si = { padding: '5px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', width: '100%', background: '#FDFAF4' }
+            return (
+              <div key={idx} style={{ borderTop: idx > 0 ? '1px solid #E8D5A3' : 'none', padding: '8px 10px', background: idx === 0 ? '#FDFAF4' : '#FAF7F0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 0.9fr 0.5fr 0.8fr 0.9fr 0.5fr 0.9fr 26px', gap: 6, alignItems: 'center' }}>
+                  <SearchableSelect value={item.producto_servicio} onChange={v => updateItem(idx, 'producto_servicio', v)}
+                    options={opts.producto?.length ? opts.producto : []} placeholder="Producto / Servicio..."
+                    onAddNew={v => addToMaestros('producto', v)} />
+                  <input type="number" value={item.precio_unitario} onChange={e => updateItem(idx, 'precio_unitario', e.target.value)} placeholder="0.00" style={si} />
+                  <input type="number" value={item.cantidad} onChange={e => updateItem(idx, 'cantidad', e.target.value)} placeholder="1" style={si} />
+                  <input list={`ul-${idx}`} value={item.unidad} onChange={e => updateItem(idx, 'unidad', e.target.value)} placeholder="Unidad" style={si} />
+                  <datalist id={`ul-${idx}`}>{(opts.unidad?.length ? opts.unidad : ['USD/ha','USD/l','USD/Kg','USD/tn','USD/bidon','USD/bolsa']).map(u => <option key={u} value={u} />)}</datalist>
+                  <select value={item.iva_pct} onChange={e => updateItem(idx, 'iva_pct', parseFloat(e.target.value))} style={{ ...si, background: '#F5F0E4' }}>
+                    <option value={0}>0%</option><option value={0.105}>10.5%</option><option value={0.21}>21%</option>
+                  </select>
+                  <div onClick={() => updateItem(idx, 'iva_incluido', !item.iva_incluido)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, border: '1.5px solid', borderColor: item.iva_incluido ? 'var(--pasto)' : '#C8B89A', background: item.iva_incluido ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {item.iva_incluido && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </div>
-                    <button type="button" onClick={() => removeExtraItem(idx)}
-                      style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #F0997B', background: '#FAECE7', color: '#993C1D', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0 }}>×</button>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>IVA:</span>
-                    {[['No incluido', false], ['Incluido en precio', true]].map(([lbl, val]) => (
-                      <button key={lbl} type="button" onClick={() => updateExtraItem(idx, 'iva_incluido', val)}
-                        style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: item.iva_incluido === val ? '#4A7C3F' : 'transparent', color: item.iva_incluido === val ? '#F5F0E4' : 'var(--arcilla)', borderColor: item.iva_incluido === val ? '#4A7C3F' : 'var(--border)' }}>
-                        {lbl}
-                      </button>
-                    ))}
-                    <button type="button" onClick={() => updateExtraItem(idx, 'showNorm', !item.showNorm)}
-                      style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: item.showNorm ? '#F5F0E8' : 'transparent', color: 'var(--barro)', borderColor: item.showNorm ? '#D8C9A8' : 'var(--border)' }}>
-                      {item.showNorm ? '▴ Ocultar normalización' : '▾ Normalizar precio'}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: item.precio_unitario ? 'var(--musgo)' : 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {item.precio_unitario ? fmtUSD(c.totConUSD, 0) : '---'}
+                  </div>
+                  <button type="button" onClick={() => removeItem(idx)}
+                    style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid', borderColor: items.length > 1 ? '#F0997B' : '#D8C9A8', background: items.length > 1 ? '#FAECE7' : 'transparent', color: items.length > 1 ? '#993C1D' : '#C8B89A', cursor: items.length > 1 ? 'pointer' : 'default', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>x</button>
+                </div>
+
+                {parseFloat(item.precio_unitario) > 0 && (
+                  <div style={{ display: 'flex', gap: 12, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: 'var(--arcilla)' }}>
+                      Sin IVA: {fmtUSD(c.totSinUSD, 2)}
+                      {esARS && <span style={{ opacity: 0.7 }}> ARS {c.totSinARS.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</span>}
+                    </span>
+                    <button type="button" onClick={() => updateItem(idx, 'showNorm', !item.showNorm)}
+                      style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: '1px solid #D8C9A8', fontFamily: 'inherit', background: item.showNorm ? '#F5F0E8' : 'transparent', color: 'var(--barro)' }}>
+                      {item.showNorm ? 'Ocultar normalizacion' : 'Normalizar precio'}
                     </button>
                   </div>
-                  {item.showNorm && (
-                    <div style={{ marginTop: 8, background: '#FAF7F0', border: '1px solid #E8D5A3', borderRadius: 7, padding: '10px 12px' }}>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--barro)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Normalizar precio</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
-                        <div>
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Marca</div>
-                          <input value={item.marca} onChange={e => updateExtraItem(idx, 'marca', e.target.value)}
-                            placeholder="Nufarm, Sigma..." style={si_} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Presentación</div>
-                          <input value={item.presentacion} onChange={e => updateExtraItem(idx, 'presentacion', e.target.value)}
-                            placeholder="bidón 20L..." style={si_} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Contenido por unidad</div>
-                          <input type="number" value={item.contenido_por_unidad} onChange={e => updateExtraItem(idx, 'contenido_por_unidad', e.target.value)}
-                            placeholder="20" style={si_} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Unidad base</div>
-                          <input value={item.unidad_base} onChange={e => updateExtraItem(idx, 'unidad_base', e.target.value)}
-                            placeholder="L, Kg, tn..." style={si_} />
-                        </div>
+                )}
+
+                {item.showNorm && (
+                  <div style={{ marginTop: 6, background: '#FAF7F0', border: '1px solid #E8D5A3', borderRadius: 6, padding: '8px 10px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+                    {[['Marca','marca','Nufarm...','text'],['Presentacion','presentacion','bidon 20L...','text'],['Contenido/unidad','contenido_por_unidad','20','number'],['Unidad base','unidad_base','L, Kg, tn...','text']].map(([lbl,k,ph,tp]) => (
+                      <div key={k}>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>{lbl}</div>
+                        <input type={tp} value={item[k]} onChange={e => updateItem(idx, k, e.target.value)} placeholder={ph}
+                          style={{ padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit', width: '100%', background: '#FDFAF4' }} />
                       </div>
-                      {item.precio_unitario && item.contenido_por_unidad && (
-                        <div style={{ marginTop: 8, padding: '6px 10px', background: 'white', borderRadius: 5, border: '1px solid #D8C9A8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 11, color: 'var(--arcilla)' }}>Precio por {item.unidad_base || 'unidad base'}:</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--musgo)' }}>
-                            U$S {(parseFloat(item.precio_unitario) / parseFloat(item.contenido_por_unidad)).toFixed(4)} / {item.unidad_base || '?'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                    ))}
+                    {item.precio_unitario && item.contenido_por_unidad && (
+                      <div style={{ gridColumn: '1 / -1', marginTop: 4, padding: '5px 8px', background: 'white', borderRadius: 5, border: '1px solid #D8C9A8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'var(--arcilla)' }}>Precio por {item.unidad_base || 'unidad base'}:</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--musgo)' }}>U$S {(parseFloat(item.precio_unitario) / parseFloat(item.contenido_por_unidad)).toFixed(4)} / {item.unidad_base || '?'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          <div style={{ borderTop: '2px solid #D8C9A8', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F5F0E4', borderRadius: '0 0 7px 7px' }}>
+            <button type="button" onClick={addItem}
+              style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid var(--pasto)', background: 'transparent', color: 'var(--musgo)', fontFamily: 'inherit', fontWeight: 500 }}>
+              + Agregar item{items.length > 1 ? ` (${items.length} en total)` : ''}
+            </button>
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: 'var(--arcilla)', marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sin IVA</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--arcilla)' }}>{fmtUSD(totFact.sinUSD)}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: 'var(--musgo)', marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total c/IVA</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--musgo)' }}>{fmtUSD(totFact.conUSD)}</div>
+                {esARS && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>ARS {totFact.conARS.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>}
+              </div>
+            </div>
           </div>
-        )}
-        <button type="button" onClick={addExtraItem}
-          style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid var(--pasto)', background: extraItems.length > 0 ? 'var(--verde-light)' : 'transparent', color: 'var(--musgo)', fontFamily: 'inherit', fontWeight: 500, alignSelf: 'flex-start' }}>
-          + Agregar ítem a esta factura{extraItems.length > 0 ? ` (${extraItems.length} extra${extraItems.length > 1 ? 's' : ''})` : ''}
-        </button>
-        {/* Botón carga especial */}
+        </div>
+
         <div>
-          <button type="button"
-            onClick={() => f('carga_especial', !form.carga_especial)}
+          <button type="button" onClick={() => f('carga_especial', !form.carga_especial)}
             style={{ padding: '7px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: form.carga_especial ? '#E4F0F4' : 'transparent', color: form.carga_especial ? '#2C5A6A' : 'var(--arcilla)', borderColor: form.carga_especial ? '#7A9EAD' : 'var(--border)', fontWeight: form.carga_especial ? 500 : 400 }}>
-            {form.carga_especial ? '✓ Factura con ítems mixtos' : '+ Factura con ítems mixtos (combustible, etc.)'}
+            {form.carga_especial ? 'Factura con items mixtos' : '+ Factura con items mixtos (combustible, etc.)'}
           </button>
         </div>
 
-        {/* Panel carga especial */}
         {form.carga_especial && (
           <div style={{ background: '#EAF2F8', border: '1px solid #7A9EAD', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#2C5A6A', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-              Desglose — ítems relacionados vs no relacionados al campo
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, color: '#4E7A8A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}></th>
-                    <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#993C1D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}>Ítem relacionado al campo</th>
-                    <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#4E7A8A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}>Ítem NO relacionado</th>
-                    <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#3B2E1E', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #B8D0D8' }}>Total factura</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>Monto</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
-                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block', fontWeight: 600, color: '#3B2E1E' }}>
-                        {montoRelacionado > 0 ? montoRelacionado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                        <div style={{ fontSize: 10, color: '#A08060', fontWeight: 400 }}>del precio × cantidad</div>
-                      </div>
-                    </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A', borderBottom: '1px solid #D0E8F0' }}>
-                      {montoTotalFact > 0 && montoRelacionado > 0 ? (montoTotalFact - montoRelacionado).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                    </td>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#2C5A6A', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Desglose items campo vs no campo</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr>
+                <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, color: '#4E7A8A', fontWeight: 600, textTransform: 'uppercase', borderBottom: '1px solid #B8D0D8' }}></th>
+                <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#993C1D', fontWeight: 600, textTransform: 'uppercase', borderBottom: '1px solid #B8D0D8' }}>Item campo</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#4E7A8A', fontWeight: 600, textTransform: 'uppercase', borderBottom: '1px solid #B8D0D8' }}>Item NO campo</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right', fontSize: 10, color: '#3B2E1E', fontWeight: 600, textTransform: 'uppercase', borderBottom: '1px solid #B8D0D8' }}>Total factura</th>
+              </tr></thead>
+              <tbody>
+                {[['Monto', montoRelacionado, montoTotalFact - montoRelacionado, 'monto_total_factura'],
+                  ['IVA', ivaTotalFact * proporcion, ivaTotalFact * (1 - proporcion), 'iva_total_factura'],
+                  ['Otros imp.', otrosImpTotalFact * proporcion, otrosImpTotalFact * (1 - proporcion), 'otros_imp_total_factura']].map(([lbl, campo, noCampo, k]) => (
+                  <tr key={lbl}>
+                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>{lbl}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600, borderBottom: '1px solid #D0E8F0' }}>{campo > 0 ? campo.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '---'}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A', borderBottom: '1px solid #D0E8F0' }}>{noCampo > 0 ? noCampo.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '---'}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
                       <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block' }}>
-                        <input type="number" step="0.01" value={form.monto_total_factura}
-                          onChange={e => f('monto_total_factura', e.target.value)}
-                          placeholder="Total factura"
+                        <input type="number" step="0.01" value={form[k]} onChange={e => f(k, e.target.value)} placeholder="Total"
                           style={{ width: 110, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' }} />
                       </div>
                     </td>
                   </tr>
-                  <tr>
-                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500, borderBottom: '1px solid #D0E8F0' }}>IVA</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600, borderBottom: '1px solid #D0E8F0' }}>
-                      {proporcion > 0 && ivaTotalFact > 0 ? (ivaTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                      {proporcion > 0 && ivaTotalFact > 0 && <div style={{ fontSize: 10, color: '#A08060', fontWeight: 400 }}>se registra este valor</div>}
-                    </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A', borderBottom: '1px solid #D0E8F0' }}>
-                      {proporcion > 0 && ivaTotalFact > 0 ? (ivaTotalFact * (1 - proporcion)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                    </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid #D0E8F0' }}>
-                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block' }}>
-                        <input type="number" step="0.01" value={form.iva_total_factura}
-                          onChange={e => f('iva_total_factura', e.target.value)}
-                          placeholder="IVA total"
-                          style={{ width: 110, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' }} />
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '8px 10px', color: 'var(--tierra)', fontWeight: 500 }}>Otros impuestos</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#993C1D', fontWeight: 600 }}>
-                      {proporcion > 0 && otrosImpTotalFact > 0 ? (otrosImpTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                      {proporcion > 0 && otrosImpTotalFact > 0 && <div style={{ fontSize: 10, color: '#A08060', fontWeight: 400 }}>se registra este valor</div>}
-                    </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#4E7A8A' }}>
-                      {proporcion > 0 && otrosImpTotalFact > 0 ? (otrosImpTotalFact * (1 - proporcion)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                    </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                      <div style={{ background: '#FFF9C4', border: '1px solid #E0C800', borderRadius: 5, padding: '3px 8px', display: 'inline-block' }}>
-                        <input type="number" step="0.01" value={form.otros_imp_total_factura}
-                          onChange={e => f('otros_imp_total_factura', e.target.value)}
-                          placeholder="Otros imp."
-                          style={{ width: 110, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' }} />
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
             {proporcion > 0 && (
-              <div style={{ marginTop: 10, padding: '8px 12px', background: 'white', borderRadius: 6, border: '1px solid #B8D0D8', fontSize: 12, color: '#2C5A6A' }}>
-                Proporción ítem relacionado: <strong>{(proporcion * 100).toFixed(1)}%</strong> del total factura.
-                Se registrarán: monto <strong>{montoRelacionado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                {ivaTotalFact > 0 && <> · IVA <strong>{(ivaTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>}
-                {otrosImpTotalFact > 0 && <> · Otros imp. <strong>{(otrosImpTotalFact * proporcion).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>}
+              <div style={{ marginTop: 10, padding: '7px 12px', background: 'white', borderRadius: 6, border: '1px solid #B8D0D8', fontSize: 12, color: '#2C5A6A' }}>
+                Proporcion item campo: <strong>{(proporcion * 100).toFixed(1)}%</strong> del total.
               </div>
             )}
           </div>
         )}
 
         <div className="grid-2">
-          <div className="field">
-            <label className="label">IVA</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {IVA_OPTS.map(o => <button key={o.val} type="button" onClick={() => f('iva_pct', o.val)} style={{ flex: 1, padding: '7px 4px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: form.iva_pct === o.val ? 'var(--pasto)' : 'transparent', color: form.iva_pct === o.val ? '#F5F0E4' : 'var(--arcilla)', borderColor: form.iva_pct === o.val ? 'var(--pasto)' : 'var(--border)' }}>{o.label}</button>)}
-            </div>
-          </div>
-          <div className="field">
-            <label className="label">IVA incluido</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['No', 'Sí'].map(o => <button key={o} type="button" onClick={() => f('iva_incluido', o === 'Sí')} style={{ flex: 1, padding: '7px 4px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', background: (form.iva_incluido ? 'Sí' : 'No') === o ? 'var(--pasto)' : 'transparent', color: (form.iva_incluido ? 'Sí' : 'No') === o ? '#F5F0E4' : 'var(--arcilla)', borderColor: (form.iva_incluido ? 'Sí' : 'No') === o ? 'var(--pasto)' : 'var(--border)' }}>{o}</button>)}
-            </div>
-          </div>
-        </div>
-        <div className="grid-2">
-          <div className="field"><label className="label">Factura a nombre de</label>{sel('factura_nombre', ['Fer','Leo','ambos','Sin factura'])}</div>
           <div className="field"><label className="label">Tipo de pago</label>{sel('tipo_pago', TIPOS_PAGO)}</div>
+          {form.tipo_pago === 'Canje' && (
+            <div className="field"><label className="label">Mes del canje</label>
+              <SearchableSelect value={form.mes_canje} onChange={v => f('mes_canje', v)}
+                options={opts.mes_canje?.length ? opts.mes_canje : MESES_CANJE}
+                placeholder="Selecciona el mes" allowClear onAddNew={v => addToMaestros('mes_canje', v)} />
+            </div>
+          )}
+          {form.tipo_pago === 'Cta Cte' && (
+            <div className="field"><label className="label">Fecha a pagar</label>
+              <input className="input" type="date" value={form.dia_pago} onChange={e => f('dia_pago', e.target.value)} style={{ width: '100%' }} />
+            </div>
+          )}
+          {!['Canje','Cta Cte'].includes(form.tipo_pago) && <div />}
         </div>
-        {form.tipo_pago === 'Canje' && (
-          <div className="field">
-            <label className="label">Mes del canje</label>
-            <SearchableSelect value={form.mes_canje} onChange={v => f('mes_canje', v)}
-              options={opts.mes_canje?.length ? opts.mes_canje : MESES_CANJE}
-              placeholder="Seleccioná el mes" allowClear
-              onAddNew={v => addToMaestros('mes_canje', v)} />
-          </div>
-        )}
-        {form.tipo_pago === 'Cta Cte' && (
-          <div className="field">
-            <label className="label">Fecha a pagar</label>
-            <input className="input" type="date" value={form.dia_pago}
-              onChange={e => f('dia_pago', e.target.value)} style={{ width: '100%' }} />
-          </div>
-        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: form.check_pago ? 'var(--verde-light)' : '#F5F0E4', border: '1px solid', borderColor: form.check_pago ? 'var(--brote)' : 'var(--border)', borderRadius: 8, cursor: 'pointer' }}
           onClick={() => f('check_pago', !form.check_pago)}>
-          <div style={{ width: 20, height: 20, borderRadius: 5, border: '1.5px solid', borderColor: form.check_pago ? 'var(--pasto)' : '#C8B89A', background: form.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+          <div style={{ width: 20, height: 20, borderRadius: 5, border: '1.5px solid', borderColor: form.check_pago ? 'var(--pasto)' : '#C8B89A', background: form.check_pago ? 'var(--pasto)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {form.check_pago && <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
           </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: form.check_pago ? 'var(--musgo)' : 'var(--tierra)' }}>
-              {form.check_pago ? 'Pagado ✓' : 'Marcar como pagado'}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {form.check_pago ? 'Esta factura está pagada' : 'Tocá para registrar el pago'}
-            </div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: form.check_pago ? 'var(--musgo)' : 'var(--tierra)' }}>
+            {form.check_pago ? 'Pagado' : 'Marcar como pagado'}
           </div>
         </div>
+
         <div className="field">
           <label className="label">Comentarios</label>
           <textarea className="textarea" value={form.comentarios} onChange={e => f('comentarios', e.target.value)} placeholder="Cheque, liquidaciones, etc." style={{ minHeight: 60 }} />
@@ -962,7 +701,6 @@ function FormCosto({ onSave, onCancel, dolar }) {
     </div>
   )
 }
-
 // ── Componente principal ─────────────────────────────────────────────────────
 export default function Costos({ dolares }) {
   const [costos, setCostos] = useState([])
