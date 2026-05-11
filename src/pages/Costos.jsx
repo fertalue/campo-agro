@@ -1351,3 +1351,4 @@ export default function Costos({ dolares }) {
     </div>
   )
 }
+
