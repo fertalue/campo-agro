@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { db, exportCSV, getMaestros, clearMaestrosCache } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -334,7 +334,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
     quien_carga: 'Gise', concepto: 'Compra', campanha: '25-26',
-    centro_costos: 'Produccion', proveedor: '', factura_numero: '',
+    centro_costos: 'Producción', proveedor: '', factura_numero: '',
     moneda: 'ARS', cotizacion_usd: dolar || '',
     factura_nombre: 'ambos', tipo_pago: 'Canje', mes_canje: '', dia_pago: '',
     check_pago: false, comentarios: '',
@@ -1351,4 +1351,6 @@ export default function Costos({ dolares }) {
     </div>
   )
 }
+
+
 
