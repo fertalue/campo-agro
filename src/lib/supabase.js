@@ -82,7 +82,7 @@ export const db = {
       if (filters.quien_carga)  q = q.eq('quien_carga', filters.quien_carga)
       return q
     },
-    insert: (data) => supabase.from('costos').insert(data),
+    insert: (data) => supabase.from('costos').insert(data).select(),
     update: (id, data) => supabase.from('costos').update(data).eq('id', id),
     delete: (id) => supabase.from('costos').delete().eq('id', id),
     eliminar: async (id, eliminado_por) => {
@@ -160,3 +160,4 @@ export function exportCSV(rows, filename) {
   a.href = url; a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
   a.click(); URL.revokeObjectURL(url)
 }
+
