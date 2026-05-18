@@ -1076,10 +1076,7 @@ export default function Ventas() {
         })()}
         </div>
       )}
-      {tab === 'viajes' && (() => {
 
-        return (
-          <div>
           <div style={{ marginBottom:10, position:'relative' }}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--arcilla)" strokeWidth="1.5" strokeLinecap="round" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}>
               <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
@@ -1311,7 +1308,6 @@ export default function Ventas() {
                     </tfoot>
                   </table>}
             </div>
-          </div>
           </div>
         )
       })()}
