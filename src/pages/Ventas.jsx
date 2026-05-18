@@ -853,7 +853,8 @@ export default function Ventas() {
       {showCosecha && <FormCosecha onSave={async()=>{setShowCosecha(false);await fetchAll()}} onCancel={()=>setShowCosecha(false)} />}
       {showForm    && <FormViaje  onSave={async()=>{setShowForm(false);  await fetchAll()}} onCancel={()=>setShowForm(false)} />}
 
-      {/* Filtros */}
+      {/* Filtros globales - ocultar en tab contratos */}
+      {tab !== 'contratos' && (
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
         <VtMultiSelect label="Campaña"  options={CAMPANHAS}  selected={fCampanha}  onChange={setFCampanha}  placeholder="Todas" />
         <VtMultiSelect label="Grano"    options={[...new Set(viajes.map(v=>v.grano).filter(Boolean))].sort()} selected={fGrano} onChange={setFGrano} placeholder="Todos" />
@@ -866,6 +867,7 @@ export default function Ventas() {
           </button>
         )}
       </div>
+      )}
 
       {/* Tabs */}
       <div className="vt-tabs">
