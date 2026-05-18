@@ -1,4 +1,4 @@
-import { useAuth } from '../hooks/useAuth'
+﻿import { useAuth } from '../hooks/useAuth'
 
 const NAV_ITEMS = [
   { section: 'Principal', items: [
@@ -13,7 +13,6 @@ const NAV_ITEMS = [
     { id: 'aplicaciones', label: 'Aplicaciones' },
   ]},
   { section: 'Sistema', items: [
-    { id: 'contratos', label: 'Contratos' },
     { id: 'admin', label: 'Administración' },
     { id: 'maestros', label: 'Datos maestros' },
   ]},
