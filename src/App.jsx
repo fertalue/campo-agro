@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { getDolares } from './lib/supabase'
 import Sidebar from './components/Sidebar'
@@ -8,7 +8,6 @@ import Costos from './pages/Costos'
 import Lluvias from './pages/Lluvias'
 import Admin from './pages/Admin'
 import DatosMaestros from './pages/DatosMaestros'
-import Contratos from './pages/Contratos'
 import Ventas from './pages/Ventas'
 import './styles/theme.css'
 
@@ -28,14 +27,13 @@ const PAGES = {
   almacen:      () => <Placeholder title="Almacén" />,
   aplicaciones: () => <Placeholder title="Aplicaciones" />,
   admin:        Admin,
-  contratos:    Contratos,
   maestros:     DatosMaestros,
 }
 
 const PAGE_TITLES = {
   inicio: 'Panel general', costos: 'Costos', ventas: 'Ventas / Granos',
   viajes: 'Viajes al campo', lluvias: 'Precipitaciones',
-  almacen: 'Almacén', aplicaciones: 'Aplicaciones', admin: 'Administración', contratos: 'Contratos', maestros: 'Datos maestros'
+  almacen: 'Almacén', aplicaciones: 'Aplicaciones', admin: 'Administración', maestros: 'Datos maestros'
 }
 
 const ALL_NAV = [
@@ -46,7 +44,6 @@ const ALL_NAV = [
   { id: 'lluvias',       label: 'Lluvias' },
   { id: 'almacen',       label: 'Almacén' },
   { id: 'aplicaciones',  label: 'Aplicac.' },
-  { id: 'contratos',     label: 'Contratos' },
   { id: 'admin',         label: 'Admin' },
   { id: 'maestros',      label: 'Maestros' },
 ]
