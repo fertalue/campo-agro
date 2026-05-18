@@ -950,19 +950,22 @@ export default function Ventas() {
         {(() => {
           const ctFiltrados = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
           if (ctFiltrados.length === 0) return null
-          // Por grano: contractuado vs entregado (viajes con contrato_aplicado)
+          // contractuado en kg (convertido desde tn/qq/kg del contrato)
+          // entregado en kg (neto_romaneo): todos los viajes de Venta del grano/campana
           const porGrano = {}
           ctFiltrados.forEach(ct => {
-            if (!porGrano[ct.producto]) porGrano[ct.producto] = { contractuado: 0, monto: 0, contratos: 0 }
-            porGrano[ct.producto].contractuado += ct.volumen || 0
+            const vol = ct.volumen || 0
+            const volKg = ct.unidad === 'qq' ? vol * 100 : ct.unidad === 'kg' ? vol : vol * 1000
+            if (!porGrano[ct.producto]) porGrano[ct.producto] = { contractuado: 0, monto: 0, contratos: 0, entregado: 0 }
+            porGrano[ct.producto].contractuado += volKg
             porGrano[ct.producto].monto        += ct.monto_total || 0
             porGrano[ct.producto].contratos    += 1
           })
-          filtered.forEach(v => {
-            if (!v.contrato_aplicado) return
+          // Sumar viajes de venta por grano (campana incluida en ctFiltrados)
+          const campanasCt = [...new Set(ctFiltrados.map(c => c.campanha))]
+          viajes.filter(v => v.tipo === 'Venta' && campanasCt.includes(v.campanha)).forEach(v => {
             const g = v.grano
             if (!porGrano[g]) porGrano[g] = { contractuado: 0, monto: 0, contratos: 0, entregado: 0 }
-            if (!porGrano[g].entregado) porGrano[g].entregado = 0
             porGrano[g].entregado += v.neto_romaneo || 0
           })
           // Por companhia: Fer / Leo / alquiler
