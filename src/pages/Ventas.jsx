@@ -946,134 +946,6 @@ export default function Ventas() {
             ))}
           </div>
 
-        {/* ── Panel contratos en resumen ── */}
-        {(() => {
-          const ctRes = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
-          if (ctRes.length === 0 && distrib.length === 0) return null
-
-          // Para cada grano en distrib, calcular contratos y entregas por persona
-          const granoData = distrib.map(d => {
-            const grano = d.grano
-
-            // Contratos por persona (tn -> kg). "ambos" se parte 50/50
-            const toKg = ct => {
-              const v = ct.volumen || 0
-              return ct.unidad === 'qq' ? v * 100 : ct.unidad === 'kg' ? v : v * 1000
-            }
-            const ctGrano = ctRes.filter(ct => ct.producto === grano)
-            const ctFerKg   = ctGrano.filter(ct => ct.a_nombre === 'Fer').reduce((a,c) => a + toKg(c), 0)
-                            + ctGrano.filter(ct => ct.a_nombre === 'ambos').reduce((a,c) => a + toKg(c) / 2, 0)
-            const ctLeoKg   = ctGrano.filter(ct => ct.a_nombre === 'Leo').reduce((a,c) => a + toKg(c), 0)
-                            + ctGrano.filter(ct => ct.a_nombre === 'ambos').reduce((a,c) => a + toKg(c) / 2, 0)
-            const nCtFer = ctGrano.filter(ct => ct.a_nombre === 'Fer' || ct.a_nombre === 'ambos').length
-            const nCtLeo = ctGrano.filter(ct => ct.a_nombre === 'Leo' || ct.a_nombre === 'ambos').length
-
-            return {
-              grano,
-              cosechaTotal: d.cosechaTotal,
-              // Fer
-              cuotaFer:   d.cuotaFer,
-              ctFerKg,
-              nCtFer,
-              dispFer:    d.cuotaFer - ctFerKg,
-              entregFer:  d.vendidoFer,
-              restFer:    ctFerKg - d.vendidoFer,
-              // Leo
-              cuotaLeo:   d.cuotaLeo,
-              ctLeoKg,
-              nCtLeo,
-              dispLeo:    d.cuotaLeo - ctLeoKg,
-              entregLeo:  d.vendidoLeo,
-              restLeo:    ctLeoKg - d.vendidoLeo,
-            }
-          }).filter(d => d.cosechaTotal > 0)
-
-          if (granoData.length === 0) return null
-
-          const col = { Fer:'#4A7C3F', Leo:'#C8A96E' }
-          const bg  = { Fer:'#F0F7EE', Leo:'#FAF5EC' }
-          const bd  = { Fer:'#9DC87A', Leo:'#D8C9A8' }
-
-          return (
-            <div style={{ marginTop:14, gridColumn:'1/-1' }}>
-              <h3 style={{ fontSize:14, margin:'0 0 12px 0' }}>Contratos y distribución</h3>
-              {granoData.map(d => (
-                <div key={d.grano} className="card" style={{ marginBottom:14, padding:'16px 18px' }}>
-                  {/* Header grano */}
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-                    <div style={{ width:12, height:12, borderRadius:'50%', background:PROD_COLORS[d.grano]||'#888', flexShrink:0 }}/>
-                    <span style={{ fontSize:15, fontWeight:600, color:'var(--tierra)' }}>{d.grano}</span>
-                    <span style={{ fontSize:11, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
-                  </div>
-                  {/* Dos columnas Fer | Leo */}
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                    {[
-                      { nombre:'Fer', cuota:d.cuotaFer, ct:d.ctFerKg, nCt:d.nCtFer, disp:d.dispFer, entreg:d.entregFer, rest:d.restFer },
-                      { nombre:'Leo', cuota:d.cuotaLeo, ct:d.ctLeoKg, nCt:d.nCtLeo, disp:d.dispLeo, entreg:d.entregLeo, rest:d.restLeo },
-                    ].map(p => (
-                      <div key={p.nombre} style={{ background:bg[p.nombre], border:`1px solid ${bd[p.nombre]}`, borderRadius:10, padding:'14px 16px' }}>
-                        {/* Nombre */}
-                        <div style={{ fontSize:13, fontWeight:700, color:col[p.nombre], marginBottom:12, textTransform:'uppercase', letterSpacing:'0.06em' }}>{p.nombre}</div>
-
-                        {/* Le corresponde */}
-                        <div style={{ marginBottom:10 }}>
-                          <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>Le corresponde</div>
-                          <div style={{ fontSize:20, fontWeight:700, color:col[p.nombre] }}>{fmtTn(p.cuota)}</div>
-                        </div>
-
-                        {/* Separador */}
-                        <div style={{ height:1, background:bd[p.nombre], margin:'10px 0' }}/>
-
-                        {/* Contratos */}
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
-                          <div>
-                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Contratos ({p.nCt})</div>
-                            <div style={{ fontSize:15, fontWeight:600, color:'var(--tierra)' }}>{fmtTn(p.ct)}</div>
-                          </div>
-                          <div style={{ textAlign:'right' }}>
-                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Disponible</div>
-                            <div style={{ fontSize:13, fontWeight:600, color: p.disp >= 0 ? col[p.nombre] : '#993C1D' }}>
-                              {p.disp >= 0 ? `+ ${fmtTn(p.disp)}` : `- ${fmtTn(Math.abs(p.disp))}`}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Barra contratos vs corresponde */}
-                        <div style={{ height:6, background:'#E8D5A3', borderRadius:3, overflow:'hidden', marginBottom:10 }}>
-                          <div style={{ height:6, borderRadius:3, background:col[p.nombre], width:`${Math.min(p.cuota > 0 ? p.ct/p.cuota*100 : 0, 100)}%`, opacity:0.8 }}/>
-                        </div>
-
-                        {/* Separador */}
-                        <div style={{ height:1, background:bd[p.nombre], margin:'10px 0' }}/>
-
-                        {/* Entregado y quedan */}
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                          <div>
-                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Entregado</div>
-                            <div style={{ fontSize:15, fontWeight:600, color:'var(--musgo)' }}>{fmtTn(p.entreg)}</div>
-                          </div>
-                          <div style={{ textAlign:'right' }}>
-                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Quedan de entregar</div>
-                            <div style={{ fontSize:13, fontWeight:600, color: p.rest > 0 ? '#993C1D' : 'var(--musgo)' }}>
-                              {p.rest > 0 ? fmtTn(p.rest) : '✓ Completo'}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Barra entregado vs contratos */}
-                        {p.ct > 0 && (
-                          <div style={{ height:6, background:'#E8D5A3', borderRadius:3, overflow:'hidden', marginTop:8 }}>
-                            <div style={{ height:6, borderRadius:3, background:'var(--musgo)', width:`${Math.min(p.ct > 0 ? p.entreg/p.ct*100 : 0, 100)}%` }}/>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        })()}
         </div>
       )}
 
@@ -1300,19 +1172,8 @@ export default function Ventas() {
 
         return (
           <div>
-            {/* Filtros + boton */}
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
-              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                {[['fCtCampanha',setFCtCampanha,fCtCampanha,['Todas',...CAMPANHAS]],
-                  ['fCtProducto',setFCtProducto,fCtProducto,['Todos',...PRODUCTOS_CT]],
-                  ['fCtNombre',setFCtNombre,fCtNombre,['Todos','Fer','Leo','ambos']]
-                ].map(([key,setter,val,opts]) => (
-                  <select key={key} value={val} onChange={e=>setter(e.target.value)}
-                    style={{ padding:'6px 8px', border:'1px solid #D8C9A8', borderRadius:6, fontSize:12, background:'#F5F0E4', color:'#3B2E1E', fontFamily:'inherit' }}>
-                    {opts.map(o=><option key={o}>{o}</option>)}
-                  </select>
-                ))}
-              </div>
+            {/* Boton nuevo contrato */}
+            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:14 }}>
               <button className="btn btn-primary btn-sm" onClick={()=>{ setCtEditando(null); setShowFormCt(v=>!v) }}>
                 {showFormCt && !ctEditando ? 'Cancelar' : '+ Nuevo contrato'}
               </button>
