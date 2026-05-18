@@ -1077,39 +1077,6 @@ export default function Ventas() {
         </div>
       )}
 
-        {/* Panel contratos en resumen */}
-        {(() => {
-          const ctRes = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
-          if (ctRes.length === 0) return null
-          const porGrano = {}
-          ctRes.forEach(ct => {
-            if (!porGrano[ct.producto]) porGrano[ct.producto] = { contractuado:0, monto:0, n:0, entregado:0 }
-            porGrano[ct.producto].contractuado += ct.volumen||0
-            porGrano[ct.producto].monto        += ct.monto_total||0
-            porGrano[ct.producto].n            += 1
-          })
-          filtered.forEach(v => {
-            if (!v.contrato_aplicado) return
-            if (!porGrano[v.grano]) porGrano[v.grano] = { contractuado:0, monto:0, n:0, entregado:0 }
-            porGrano[v.grano].entregado += v.neto_romaneo||0
-          })
-          const porComp = { Fer:0, Leo:0, ambos:0 }
-          ctRes.forEach(ct => { if (ct.a_nombre in porComp) porComp[ct.a_nombre] += ct.volumen||0 })
-          const totalCt = ctRes.reduce((a,b) => a+(b.volumen||0), 0)
-          const totalCtM = ctRes.reduce((a,b) => a+(b.monto_total||0), 0)
-          return (
-            <div style={{ gridColumn:'1/-1', marginTop:4 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-                <h3 style={{ fontSize:14, margin:0 }}>Contratos</h3>
-                <span style={{ fontSize:11, color:'var(--text-muted)' }}>{ctRes.length} · {totalCt.toLocaleString('es-AR')} tn · U$S {Math.round(totalCtM).toLocaleString('es-AR')}</span>
-                <button className="btn btn-secondary btn-sm" style={{marginLeft:'auto'}} onClick={()=>setTab('contratos')}>Ver todos</button>
-              </div>
-          )
-        })()}
-
-      {/* ─────────── VIAJES (con edición inline) ─────────── */}
-      {tab === 'viajes' && (
-        <div>
           <div style={{ marginBottom:10, position:'relative' }}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--arcilla)" strokeWidth="1.5" strokeLinecap="round" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}>
               <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
