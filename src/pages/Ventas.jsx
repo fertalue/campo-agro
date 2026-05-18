@@ -9,6 +9,8 @@ const TITULARES   = ['Fer','Leo','Giaguaro','Ketopy S.A','Dari','Dario']
 const COMPRADORES = ['FYO Acopio S.A.','Tecnocampo','Oro verde','conci srl','Monsanto','MAS AGRO','DARIO ROSSI','6 hermanos','Eslava Gustavo']
 
 const ALQUILER_PCT = 0.27
+const PROD_COLORS   = { 'Soja':'#4A7C3F','Maíz':'#C8A96E','Trigo':'#A0714F','Girasol':'#EF9F27','Sorgo':'#7A9EAD','Soja semilla':'#6A9E58' }
+const COMPRADORES_CT = ['FYO Acopio S.A.','Bunge','Cargill','Nidera','Tecnocampo','Gyssa','Otro']
 const GRANO_COLOR = { 'Maíz':'#C8A96E', 'Soja':'#4A7C3F', 'Soja semilla':'#9DC87A', 'Trigo':'#A0714F', 'Girasol':'#EF9F27' }
 const TIPO_CHIP   = { 'Venta':'chip-green', 'Alquiler':'chip-amber', 'Prestamo':'chip-sky', 'Cosecha':'chip-muted' }
 
@@ -538,12 +540,17 @@ function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
 // ── Componente principal ────────────────────────────────────────────────────
 export default function Ventas() {
   const [viajes,  setViajes]  = useState([])
+  const [contratos, setContratos] = useState([])
   const [cosecha, setCosecha] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab]         = useState('resumen')
   const [showForm,    setShowForm]    = useState(false)
   const [showCosecha, setShowCosecha] = useState(false)
   const [cosechaEdit, setCosechaEdit] = useState(null)
+  const [showFormCt, setShowFormCt] = useState(false)
+  const [fCtCampanha, setFCtCampanha] = useState('Todas')
+  const [fCtProducto, setFCtProducto] = useState('Todos')
+  const [fCtNombre, setFCtNombre]     = useState('Todos')
   const [fCampanha, setFCampanha] = useState([])
   const [fGrano,    setFGrano]    = useState([])
   const [fTipo,     setFTipo]     = useState([])
@@ -558,11 +565,13 @@ export default function Ventas() {
 
   async function fetchAll() {
     setLoading(true)
-    const [v, c] = await Promise.all([
+    const [v, ct, c] = await Promise.all([
       supabase.from('granos_viajes').select('*').order('fecha', { ascending: false }),
+      supabase.from('contratos').select('*').order('fecha_cierre', { ascending: false }),
       supabase.from('granos_cosecha').select('*').order('fecha', { ascending: false }),
     ])
     setViajes(v.data || [])
+    setContratos(ct.data || [])
     setCosecha(c.data || [])
     setLoading(false)
   }
@@ -725,7 +734,7 @@ export default function Ventas() {
 
       {/* Tabs */}
       <div className="vt-tabs">
-        {[['resumen','Resumen'],['cosecha','Cosecha'],['distribucion','Distribución'],['viajes','Viajes'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
+        {[['resumen','Resumen'],['cosecha','Cosecha'],['distribucion','Distribución'],['viajes','Viajes'],['contratos','Contratos'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
           <button key={id} className={`vt-tab${tab===id?' on':''}`} onClick={()=>setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -799,8 +808,193 @@ export default function Ventas() {
               </div>
             ))}
           </div>
+
+        {/* ── Panel contratos en resumen ── */}
+        {(() => {
+          const ctFiltrados = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
+          if (ctFiltrados.length === 0) return null
+          // Por grano: contractuado vs entregado (viajes con contrato_aplicado)
+          const porGrano = {}
+          ctFiltrados.forEach(ct => {
+            if (!porGrano[ct.producto]) porGrano[ct.producto] = { contractuado: 0, monto: 0, contratos: 0 }
+            porGrano[ct.producto].contractuado += ct.volumen || 0
+            porGrano[ct.producto].monto        += ct.monto_total || 0
+            porGrano[ct.producto].contratos    += 1
+          })
+          filtered.forEach(v => {
+            if (!v.contrato_aplicado) return
+            const g = v.grano
+            if (!porGrano[g]) porGrano[g] = { contractuado: 0, monto: 0, contratos: 0, entregado: 0 }
+            if (!porGrano[g].entregado) porGrano[g].entregado = 0
+            porGrano[g].entregado += v.neto_romaneo || 0
+          })
+          // Por companhia: Fer / Leo / alquiler
+          const porCompanhia = { Fer: 0, Leo: 0, ambos: 0 }
+          ctFiltrados.forEach(ct => { if (ct.a_nombre in porCompanhia) porCompanhia[ct.a_nombre] += ct.volumen || 0 })
+          const totalCt = ctFiltrados.reduce((a,b) => a + (b.volumen||0), 0)
+          const totalCtMonto = ctFiltrados.reduce((a,b) => a + (b.monto_total||0), 0)
+          return (
+            <div style={{ marginTop:14, gridColumn:'1/-1' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                <h3 style={{ fontSize:14, margin:0 }}>Contratos</h3>
+                <span style={{ fontSize:11, color:'var(--text-muted)' }}>{ctFiltrados.length} contratos · {totalCt.toLocaleString('es-AR')} tn · U$S {Math.round(totalCtMonto).toLocaleString('es-AR')}</span>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                {/* Por grano: contractuado vs entregado */}
+                <div className="card" style={{ padding:'14px 16px' }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Contractuado vs entregado</div>
+                  {Object.entries(porGrano).map(([grano, data]) => {
+                    const pct = data.contractuado > 0 ? Math.min((data.entregado||0) / data.contractuado * 100, 100) : 0
+                    const col = PROD_COLORS[grano] || '#888'
+                    return (
+                      <div key={grano} style={{ marginBottom:12 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <div style={{ width:10, height:10, borderRadius:'50%', background:col, flexShrink:0 }}/>
+                            <span style={{ fontSize:13, fontWeight:500 }}>{grano}</span>
+                            <span style={{ fontSize:11, color:'var(--text-muted)' }}>({data.contratos} cont.)</span>
+                          </div>
+                          <div style={{ textAlign:'right', fontSize:12 }}>
+                            <span style={{ fontWeight:600 }}>{((data.entregado||0)/1000).toFixed(1)}</span>
+                            <span style={{ color:'var(--text-muted)' }}> / {(data.contractuado/1000).toFixed(1)} tn</span>
+                          </div>
+                        </div>
+                        <div style={{ height:10, background:'#E8D5A3', borderRadius:5, overflow:'hidden', position:'relative' }}>
+                          <div style={{ position:'absolute', height:10, borderRadius:5, background:col, width:`${pct}%`, transition:'width .4s', opacity:0.85 }}/>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginTop:3 }}>
+                          <span style={{ fontSize:10, color:'var(--text-muted)' }}>{Math.round(pct)}% entregado</span>
+                          <span style={{ fontSize:10, color:'var(--text-muted)' }}>Resta: {(((data.contractuado||0)-(data.entregado||0))/1000).toFixed(1)} tn</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {/* Por companhia */}
+                <div className="card" style={{ padding:'14px 16px' }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Por compañía</div>
+                  {[['Fer','#4A7C3F','#EBF4E8'],['Leo','#C8A96E','#FAF5EC'],['ambos','#7A9EAD','#E4F0F4']].map(([nombre, col, bg]) => {
+                    const vol = porCompanhia[nombre] || 0
+                    if (vol === 0) return null
+                    const ctNombre = ctFiltrados.filter(ct => ct.a_nombre === nombre)
+                    const montoCt  = ctNombre.reduce((a,b) => a + (b.monto_total||0), 0)
+                    return (
+                      <div key={nombre} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid #EDE0C8' }}>
+                        <div style={{ width:36, height:36, borderRadius:'50%', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:600, color:col, flexShrink:0 }}>
+                          {nombre === 'ambos' ? 'F+L' : nombre}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:500 }}>{nombre === 'ambos' ? 'Ambos' : nombre}</div>
+                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>U$S {Math.round(montoCt).toLocaleString('es-AR')}</div>
+                        </div>
+                        <div style={{ textAlign:'right' }}>
+                          <div style={{ fontSize:16, fontWeight:600, color:col }}>{vol.toLocaleString('es-AR')} tn</div>
+                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>{totalCt > 0 ? Math.round(vol/totalCt*100) : 0}% del total</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div style={{ marginTop:12, padding:'8px 10px', background:'#F5F0E8', borderRadius:7, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontSize:11, color:'var(--arcilla)', fontWeight:500 }}>Total contractuado</span>
+                    <span style={{ fontSize:14, fontWeight:700, color:'var(--tierra)' }}>{totalCt.toLocaleString('es-AR')} tn</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
         </div>
       )}
+
+        {/* Panel contratos en resumen */}
+        {(() => {
+          const ctRes = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
+          if (ctRes.length === 0) return null
+          const porGrano = {}
+          ctRes.forEach(ct => {
+            if (!porGrano[ct.producto]) porGrano[ct.producto] = { contractuado:0, monto:0, n:0, entregado:0 }
+            porGrano[ct.producto].contractuado += ct.volumen||0
+            porGrano[ct.producto].monto        += ct.monto_total||0
+            porGrano[ct.producto].n            += 1
+          })
+          filtered.forEach(v => {
+            if (!v.contrato_aplicado) return
+            if (!porGrano[v.grano]) porGrano[v.grano] = { contractuado:0, monto:0, n:0, entregado:0 }
+            porGrano[v.grano].entregado += v.neto_romaneo||0
+          })
+          const porComp = { Fer:0, Leo:0, ambos:0 }
+          ctRes.forEach(ct => { if (ct.a_nombre in porComp) porComp[ct.a_nombre] += ct.volumen||0 })
+          const totalCt = ctRes.reduce((a,b) => a+(b.volumen||0), 0)
+          const totalCtM = ctRes.reduce((a,b) => a+(b.monto_total||0), 0)
+          return (
+            <div style={{ gridColumn:'1/-1', marginTop:4 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                <h3 style={{ fontSize:14, margin:0 }}>Contratos</h3>
+                <span style={{ fontSize:11, color:'var(--text-muted)' }}>{ctRes.length} · {totalCt.toLocaleString('es-AR')} tn · U$S {Math.round(totalCtM).toLocaleString('es-AR')}</span>
+                <button className="btn btn-secondary btn-sm" style={{marginLeft:'auto'}} onClick={()=>setTab('contratos')}>Ver todos</button>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:14 }}>
+                <div className="card" style={{padding:'14px 16px'}}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Por grano — contractuado vs entregado</div>
+                  {Object.entries(porGrano).map(([grano, data]) => {
+                    const pct = data.contractuado > 0 ? Math.min(data.entregado/data.contractuado*100,100) : 0
+                    const col = PROD_COLORS[grano]||'#888'
+                    return (
+                      <div key={grano} style={{marginBottom:12}}>
+                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <div style={{width:10,height:10,borderRadius:'50%',background:col,flexShrink:0}}/>
+                            <span style={{fontSize:13,fontWeight:500}}>{grano}</span>
+                            <span style={{fontSize:11,color:'var(--text-muted)'}}>({data.n} cont.)</span>
+                          </div>
+                          <div style={{fontSize:12}}>
+                            <span style={{fontWeight:600}}>{(data.entregado/1000).toFixed(1)}</span>
+                            <span style={{color:'var(--text-muted)'}}> / {(data.contractuado/1000).toFixed(1)} tn</span>
+                          </div>
+                        </div>
+                        <div style={{height:10,background:'#E8D5A3',borderRadius:5,overflow:'hidden'}}>
+                          <div style={{height:10,borderRadius:5,background:col,width:pct+'%',opacity:0.85}}/>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',marginTop:3,fontSize:10,color:'var(--text-muted)'}}>
+                          <span>{Math.round(pct)}% entregado</span>
+                          <span>Resta: {((data.contractuado-data.entregado)/1000).toFixed(1)} tn</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="card" style={{padding:'14px 16px'}}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Por compañía</div>
+                  {[['Fer','#4A7C3F','#EBF4E8'],['Leo','#C8A96E','#FAF5EC'],['ambos','#7A9EAD','#E4F0F4']].map(([n,col,bg]) => {
+                    const vol = porComp[n]||0
+                    if (!vol) return null
+                    return (
+                      <div key={n} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderBottom:'1px solid #EDE0C8'}}>
+                        <div style={{width:34,height:34,borderRadius:'50%',background:bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:col,flexShrink:0}}>
+                          {n==='ambos'?'F+L':n}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:500}}>{n==='ambos'?'Ambos':n}</div>
+                          <div style={{height:5,background:'#E8D5A3',borderRadius:3,marginTop:4,overflow:'hidden'}}>
+                            <div style={{height:5,borderRadius:3,background:col,width:(totalCt>0?vol/totalCt*100:0)+'%'}}/>
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right',flexShrink:0}}>
+                          <div style={{fontSize:14,fontWeight:600,color:col}}>{(vol/1000).toFixed(1)} tn</div>
+                          <div style={{fontSize:10,color:'var(--text-muted)'}}>{totalCt>0?Math.round(vol/totalCt*100):0}%</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div style={{marginTop:12,padding:'8px 10px',background:'#F5F0E8',borderRadius:7,display:'flex',justifyContent:'space-between'}}>
+                    <span style={{fontSize:11,color:'var(--arcilla)',fontWeight:500}}>Total</span>
+                    <span style={{fontSize:14,fontWeight:700,color:'var(--tierra)'}}>{(totalCt/1000).toFixed(1)} tn</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
       {/* ─────────── VIAJES (con edición inline) ─────────── */}
       {tab === 'viajes' && (
@@ -902,6 +1096,242 @@ export default function Ventas() {
       )}
 
       {/* ─────────── MERMAS ─────────── */}
+
+      {/* ─────────── CONTRATOS ─────────── */}
+      {tab === 'contratos' && (() => {
+        const PRODUCTOS_CT = ['Soja','Maíz','Trigo','Girasol','Sorgo','Soja semilla']
+        const ctFiltrados = contratos.filter(ct => {
+          if (fCtCampanha !== 'Todas' && ct.campanha !== fCtCampanha) return false
+          if (fCtProducto !== 'Todos' && ct.producto !== fCtProducto) return false
+          if (fCtNombre   !== 'Todos' && ct.a_nombre  !== fCtNombre)  return false
+          return true
+        })
+        const totalCtVol    = ctFiltrados.reduce((a,b) => a + (b.volumen||0), 0)
+        const totalCtMonto  = ctFiltrados.reduce((a,b) => a + (b.monto_total||0), 0)
+        const precioMedioCt = totalCtVol > 0 ? totalCtMonto / totalCtVol : 0
+
+        // contractuado vs viajes entregados por grano
+        const porGranoCt = {}
+        ctFiltrados.forEach(ct => {
+          if (!porGranoCt[ct.producto]) porGranoCt[ct.producto] = { contractuado:0, monto:0, n:0, entregado:0 }
+          porGranoCt[ct.producto].contractuado += ct.volumen || 0
+          porGranoCt[ct.producto].monto        += ct.monto_total || 0
+          porGranoCt[ct.producto].n            += 1
+        })
+        viajes.filter(v => fCtCampanha === 'Todas' || v.campanha === fCtCampanha).forEach(v => {
+          if (!v.contrato_aplicado) return
+          if (!porGranoCt[v.grano]) porGranoCt[v.grano] = { contractuado:0, monto:0, n:0, entregado:0 }
+          porGranoCt[v.grano].entregado += v.neto_romaneo || 0
+        })
+
+        return (
+          <div>
+            {/* Filtros + boton */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {[['fCtCampanha',setFCtCampanha,fCtCampanha,['Todas',...CAMPANHAS]],
+                  ['fCtProducto',setFCtProducto,fCtProducto,['Todos',...PRODUCTOS_CT]],
+                  ['fCtNombre',setFCtNombre,fCtNombre,['Todos','Fer','Leo','ambos']]
+                ].map(([key,setter,val,opts]) => (
+                  <select key={key} value={val} onChange={e=>setter(e.target.value)}
+                    style={{ padding:'6px 8px', border:'1px solid #D8C9A8', borderRadius:6, fontSize:12, background:'#F5F0E4', color:'#3B2E1E', fontFamily:'inherit' }}>
+                    {opts.map(o=><option key={o}>{o}</option>)}
+                  </select>
+                ))}
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={()=>setShowFormCt(v=>!v)}>
+                {showFormCt ? 'Cancelar' : '+ Nuevo contrato'}
+              </button>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))', gap:10, marginBottom:14 }}>
+              {[
+                ['Volumen total', totalCtVol.toLocaleString('es-AR')+' tn', ctFiltrados.length+' contratos', '#4A7C3F'],
+                ['Precio medio', 'U$S '+precioMedioCt.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}), 'por tonelada', '#7A9EAD'],
+                ['Monto total', 'U$S '+Math.round(totalCtMonto).toLocaleString('es-AR'), 'todos los contratos', '#A0714F'],
+              ].map(([l,v,s,col]) => (
+                <div className="vt-stat" key={l}>
+                  <div className="vt-sl">{l}</div>
+                  <div style={{ fontSize:16, fontWeight:600, color:'#3B2E1E', marginBottom:4 }}>{v}</div>
+                  <div className="vt-ss">{s}</div>
+                  <div className="vt-bar"><div className="vt-fill" style={{ width:'70%', background:col }}/></div>
+                </div>
+              ))}
+            </div>
+
+            {/* Resumen por grano: contractuado vs entregado */}
+            {Object.keys(porGranoCt).length > 0 && (
+              <div className="card" style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Contractuado vs entregado por grano</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:12 }}>
+                  {Object.entries(porGranoCt).map(([grano, data]) => {
+                    const pct = data.contractuado > 0 ? Math.min(data.entregado/data.contractuado*100, 100) : 0
+                    const col = PROD_COLORS[grano] || '#888'
+                    return (
+                      <div key={grano} style={{ background:'#FAF7F0', borderRadius:8, padding:'12px 14px', border:'1px solid #E8D5A3' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                          <div style={{ width:12, height:12, borderRadius:'50%', background:col }}/>
+                          <span style={{ fontSize:13, fontWeight:600 }}>{grano}</span>
+                          <span style={{ fontSize:10, color:'var(--text-muted)', marginLeft:'auto' }}>{data.n} cont.</span>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                          <div>
+                            <div style={{ fontSize:10, color:'var(--text-muted)' }}>Contractuado</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:col }}>{(data.contractuado/1000).toFixed(1)} tn</div>
+                          </div>
+                          <div style={{ textAlign:'right' }}>
+                            <div style={{ fontSize:10, color:'var(--text-muted)' }}>Entregado</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:'var(--musgo)' }}>{(data.entregado/1000).toFixed(1)} tn</div>
+                          </div>
+                        </div>
+                        <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden', marginBottom:4 }}>
+                          <div style={{ height:8, borderRadius:4, background:col, width:pct+'%', opacity:0.85 }}/>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text-muted)' }}>
+                          <span>{Math.round(pct)}% entregado</span>
+                          <span>Resta: {((data.contractuado-data.entregado)/1000).toFixed(1)} tn</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Form nuevo contrato */}
+            {showFormCt && (() => {
+              const [ctForm, setCtForm] = React.useState({ fecha_cierre:new Date().toISOString().split('T')[0], campanha:'25-26', producto:'Soja', volumen:'', unidad:'tn', precio:'', moneda:'USD', fecha_entrega:'', a_nombre:'ambos', comprador:'', observaciones:'' })
+              const fc = (k,v) => setCtForm(p=>({...p,[k]:v}))
+              const [savingCt, setSavingCt] = React.useState(false)
+              const montoCalc = (parseFloat(ctForm.volumen)||0) * (parseFloat(ctForm.precio)||0)
+              async function saveCt(e) {
+                e.preventDefault(); setSavingCt(true)
+                await supabase.from('contratos').insert({ ...ctForm, volumen:parseFloat(ctForm.volumen)||null, precio:parseFloat(ctForm.precio)||null, monto_total:montoCalc||null })
+                setSavingCt(false); setShowFormCt(false); await fetchAll()
+              }
+              return (
+                <div className="card mb-3" style={{ background:'#F9F6EE', borderColor:'var(--paja)' }}>
+                  <h3 style={{ marginBottom:16 }}>Nuevo contrato</h3>
+                  <form onSubmit={saveCt} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                    <div className="grid-2">
+                      <div className="field"><label className="label">Fecha cierre</label>
+                        <input className="input" type="date" value={ctForm.fecha_cierre} onChange={e=>fc('fecha_cierre',e.target.value)} style={{width:'100%'}}/>
+                      </div>
+                      <div className="field"><label className="label">Campaña</label>
+                        <select className="select" value={ctForm.campanha} onChange={e=>fc('campanha',e.target.value)} style={{width:'100%'}}>
+                          {CAMPANHAS.map(c=><option key={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid-2">
+                      <div className="field"><label className="label">Producto</label>
+                        <select className="select" value={ctForm.producto} onChange={e=>fc('producto',e.target.value)} style={{width:'100%'}}>
+                          {PRODUCTOS_CT.map(p=><option key={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div className="field"><label className="label">Comprador</label>
+                        <input className="input" value={ctForm.comprador} onChange={e=>fc('comprador',e.target.value)} placeholder="FYO, Bunge..." list="ct-compradores" style={{width:'100%'}}/>
+                        <datalist id="ct-compradores">{COMPRADORES_CT.map(c=><option key={c} value={c}/>)}</datalist>
+                      </div>
+                    </div>
+                    <div className="grid-2">
+                      <div className="field"><label className="label">Volumen</label>
+                        <div style={{display:'flex',gap:6}}>
+                          <input className="input" type="number" value={ctForm.volumen} onChange={e=>fc('volumen',e.target.value)} placeholder="0" style={{width:'100%'}}/>
+                          <select className="select" value={ctForm.unidad} onChange={e=>fc('unidad',e.target.value)} style={{width:80,flexShrink:0}}>
+                            {['tn','qq','kg'].map(o=><option key={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="field"><label className="label">Precio</label>
+                        <div style={{display:'flex',gap:6}}>
+                          <input className="input" type="number" value={ctForm.precio} onChange={e=>fc('precio',e.target.value)} placeholder="0.00" style={{width:'100%'}}/>
+                          <select className="select" value={ctForm.moneda} onChange={e=>fc('moneda',e.target.value)} style={{width:80,flexShrink:0}}>
+                            {['USD','ARS'].map(o=><option key={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    {montoCalc > 0 && (
+                      <div style={{ background:'var(--verde-light)', border:'1px solid var(--brote)', borderRadius:8, padding:'10px 14px', display:'flex', justifyContent:'space-between' }}>
+                        <span style={{ fontSize:12, color:'var(--musgo)' }}>Monto total</span>
+                        <span style={{ fontSize:18, fontWeight:600, color:'var(--musgo)' }}>{ctForm.moneda==='USD'?'U$S ':'$ '}{montoCalc.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</span>
+                      </div>
+                    )}
+                    <div className="grid-2">
+                      <div className="field"><label className="label">Fecha entrega</label>
+                        <input className="input" type="date" value={ctForm.fecha_entrega} onChange={e=>fc('fecha_entrega',e.target.value)} style={{width:'100%'}}/>
+                      </div>
+                      <div className="field"><label className="label">A nombre de</label>
+                        <div style={{display:'flex',gap:6}}>
+                          {['Fer','Leo','ambos'].map(o=>(
+                            <button key={o} type="button" onClick={()=>fc('a_nombre',o)}
+                              style={{ flex:1, padding:'8px 4px', borderRadius:6, fontSize:12, cursor:'pointer', border:'1px solid', fontFamily:'inherit', background:ctForm.a_nombre===o?'var(--pasto)':'transparent', color:ctForm.a_nombre===o?'#F5F0E4':'var(--arcilla)', borderColor:ctForm.a_nombre===o?'var(--pasto)':'var(--border)' }}>{o}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="field"><label className="label">Observaciones</label>
+                      <textarea className="textarea" value={ctForm.observaciones} onChange={e=>fc('observaciones',e.target.value)} placeholder="N° contrato, condiciones..." style={{minHeight:56}}/>
+                    </div>
+                    <div style={{display:'flex',gap:8}}>
+                      <button className="btn btn-primary" type="submit" disabled={savingCt}>{savingCt?'Guardando...':'Guardar contrato'}</button>
+                      <button className="btn btn-secondary" type="button" onClick={()=>setShowFormCt(false)}>Cancelar</button>
+                    </div>
+                  </form>
+                </div>
+              )
+            })()}
+
+            {/* Tabla */}
+            <div className="card" style={{ padding:0, overflowX:'auto' }}>
+              {ctFiltrados.length === 0
+                ? <div style={{ padding:32, textAlign:'center', fontSize:13, color:'var(--arcilla)' }}>Sin contratos con estos filtros</div>
+                : <table className="vt-tbl">
+                    <thead><tr>
+                      <th>Cierre</th><th>Campaña</th><th>Producto</th><th>Comprador</th>
+                      <th style={{textAlign:'right'}}>Volumen</th>
+                      <th style={{textAlign:'right'}}>Precio</th>
+                      <th style={{textAlign:'right'}}>Monto</th>
+                      <th>Entrega</th><th>Compañía</th><th>Obs.</th>
+                    </tr></thead>
+                    <tbody>
+                      {ctFiltrados.map(ct => (
+                        <tr key={ct.id}>
+                          <td style={{color:'var(--text-muted)',whiteSpace:'nowrap'}}>{ct.fecha_cierre?new Date(ct.fecha_cierre+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
+                          <td><span className="cc chip-muted">{ct.campanha}</span></td>
+                          <td>
+                            <div style={{display:'flex',alignItems:'center',gap:6}}>
+                              <div style={{width:10,height:10,borderRadius:'50%',background:PROD_COLORS[ct.producto]||'#888',flexShrink:0}}/>
+                              <span style={{fontWeight:500}}>{ct.producto}</span>
+                            </div>
+                          </td>
+                          <td style={{color:'var(--suelo)'}}>{ct.comprador}</td>
+                          <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:500}}>{ct.volumen?.toLocaleString('es-AR')} {ct.unidad}</td>
+                          <td style={{textAlign:'right',fontFamily:'monospace'}}>{ct.moneda==='USD'?'U$S ':'$ '}{ct.precio?.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}/{ct.unidad}</td>
+                          <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:500,color:'var(--musgo)'}}>{ct.moneda==='USD'?'U$S ':'$ '}{Math.round(ct.monto_total||0).toLocaleString('es-AR')}</td>
+                          <td style={{color:'var(--text-muted)',whiteSpace:'nowrap'}}>{ct.fecha_entrega?new Date(ct.fecha_entrega+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
+                          <td><span className={`cc ${ct.a_nombre==='Fer'?'chip-green':ct.a_nombre==='Leo'?'chip-amber':'chip-sky'}`}>{ct.a_nombre}</span></td>
+                          <td style={{fontSize:11,color:'var(--text-muted)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ct.observaciones}>{ct.observaciones||'—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{background:'#F5F0E4',fontWeight:600}}>
+                        <td colSpan={4} style={{padding:'10px',fontSize:11,color:'var(--text-muted)'}}>{ctFiltrados.length} contratos</td>
+                        <td style={{padding:'10px',fontFamily:'monospace',textAlign:'right'}}>{totalCtVol.toLocaleString('es-AR')} tn</td>
+                        <td style={{padding:'10px',fontFamily:'monospace',textAlign:'right',color:'var(--text-muted)'}}>U$S {precioMedioCt.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}/tn</td>
+                        <td style={{padding:'10px',fontFamily:'monospace',textAlign:'right',color:'var(--musgo)'}}>U$S {Math.round(totalCtMonto).toLocaleString('es-AR')}</td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    </tfoot>
+                  </table>}
+            </div>
+          </div>
+        )
+      })()}
+
       {tab === 'mermas' && (
         <div>
           {granos.map(g => {
