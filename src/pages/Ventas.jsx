@@ -538,6 +538,140 @@ function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
 }
 
 // ── Componente principal ────────────────────────────────────────────────────
+
+// ── FormContrato — componente separado para evitar hooks en IIFE ─────────────
+function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHAS, COMPRADORES_CT }) {
+  const PRODUCTOS_CT = ['Soja','Maíz','Trigo','Girasol','Sorgo','Soja semilla']
+  const isEdit = !!contrato
+  const emptyForm = { fecha_cierre:new Date().toISOString().split('T')[0], campanha:'25-26', producto:'Soja', numero_contrato:'', volumen:'', unidad:'tn', precio:'', moneda:'USD', fecha_entrega:'', a_nombre:'ambos', comprador:'', observaciones:'' }
+  const [form, setForm] = useState(isEdit ? {
+    fecha_cierre:    contrato.fecha_cierre || new Date().toISOString().split('T')[0],
+    campanha:        contrato.campanha || '25-26',
+    producto:        contrato.producto || 'Soja',
+    numero_contrato: contrato.numero_contrato || '',
+    volumen:         contrato.volumen ?? '',
+    unidad:          contrato.unidad || 'tn',
+    precio:          contrato.precio ?? '',
+    moneda:          contrato.moneda || 'USD',
+    fecha_entrega:   contrato.fecha_entrega || '',
+    a_nombre:        contrato.a_nombre || 'ambos',
+    comprador:       contrato.comprador || '',
+    observaciones:   contrato.observaciones || '',
+  } : emptyForm)
+  const f = (k,v) => setForm(p => ({...p,[k]:v}))
+  const [saving, setSaving] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const montoCalc = (parseFloat(form.volumen)||0) * (parseFloat(form.precio)||0)
+
+  async function handleSave(e) {
+    e.preventDefault(); setSaving(true)
+    const payload = { ...form, volumen:parseFloat(form.volumen)||null, precio:parseFloat(form.precio)||null, monto_total:montoCalc||null }
+    if (isEdit) {
+      await supabase.from('contratos').update(payload).eq('id', contrato.id)
+    } else {
+      await supabase.from('contratos').insert(payload)
+    }
+    setSaving(false); onSave()
+  }
+  async function handleDelete() {
+    setSaving(true)
+    await supabase.from('contratos').delete().eq('id', contrato.id)
+    setSaving(false); onSave()
+  }
+
+  return (
+    <div className="card mb-3" style={{ background: isEdit ? '#FFF9EE' : '#F9F6EE', borderColor: isEdit ? '#C8A96E' : 'var(--paja)' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <h3 style={{ margin:0 }}>{isEdit ? `Editando contrato${contrato.numero_contrato ? ' #'+contrato.numero_contrato : ''}` : 'Nuevo contrato'}</h3>
+        {isEdit && !confirmDel && (
+          <button onClick={()=>setConfirmDel(true)} style={{ background:'#FAECE7', border:'1px solid #F0997B', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer', color:'#993C1D' }}>
+            🗑 Eliminar
+          </button>
+        )}
+        {isEdit && confirmDel && (
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <span style={{ fontSize:12, color:'#993C1D' }}>¿Eliminar?</span>
+            <button onClick={handleDelete} disabled={saving} style={{ background:'#993C1D', color:'white', border:'none', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>Sí</button>
+            <button onClick={()=>setConfirmDel(false)} style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>No</button>
+          </div>
+        )}
+      </div>
+      <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <div className="grid-2">
+          <div className="field"><label className="label">Fecha cierre</label>
+            <input className="input" type="date" value={form.fecha_cierre} onChange={e=>f('fecha_cierre',e.target.value)} style={{width:'100%'}}/>
+          </div>
+          <div className="field"><label className="label">Campaña</label>
+            <select className="select" value={form.campanha} onChange={e=>f('campanha',e.target.value)} style={{width:'100%'}}>
+              {CAMPANHAS.map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="grid-2">
+          <div className="field"><label className="label">Producto</label>
+            <select className="select" value={form.producto} onChange={e=>f('producto',e.target.value)} style={{width:'100%'}}>
+              {PRODUCTOS_CT.map(p=><option key={p}>{p}</option>)}
+            </select>
+          </div>
+          <div className="field"><label className="label">N° de contrato</label>
+            <input className="input" value={form.numero_contrato} onChange={e=>f('numero_contrato',e.target.value)} placeholder="ej: 12345 / FYO-2025-001" style={{width:'100%'}}/>
+          </div>
+        </div>
+        <div className="grid-2">
+          <div className="field"><label className="label">Comprador</label>
+            <input className="input" value={form.comprador} onChange={e=>f('comprador',e.target.value)} placeholder="FYO, Bunge..." list="ct-compradores" style={{width:'100%'}}/>
+            <datalist id="ct-compradores">{COMPRADORES_CT.map(c=><option key={c} value={c}/>)}</datalist>
+          </div>
+          <div className="field"><label className="label">A nombre de</label>
+            <div style={{display:'flex',gap:6}}>
+              {['Fer','Leo','ambos'].map(o=>(
+                <button key={o} type="button" onClick={()=>f('a_nombre',o)}
+                  style={{ flex:1, padding:'8px 4px', borderRadius:6, fontSize:12, cursor:'pointer', border:'1px solid', fontFamily:'inherit', background:form.a_nombre===o?'var(--pasto)':'transparent', color:form.a_nombre===o?'#F5F0E4':'var(--arcilla)', borderColor:form.a_nombre===o?'var(--pasto)':'var(--border)' }}>{o}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="grid-2">
+          <div className="field"><label className="label">Volumen</label>
+            <div style={{display:'flex',gap:6}}>
+              <input className="input" type="number" value={form.volumen} onChange={e=>f('volumen',e.target.value)} placeholder="0" style={{width:'100%'}}/>
+              <select className="select" value={form.unidad} onChange={e=>f('unidad',e.target.value)} style={{width:80,flexShrink:0}}>
+                {['tn','qq','kg'].map(o=><option key={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="field"><label className="label">Precio</label>
+            <div style={{display:'flex',gap:6}}>
+              <input className="input" type="number" value={form.precio} onChange={e=>f('precio',e.target.value)} placeholder="0.00" style={{width:'100%'}}/>
+              <select className="select" value={form.moneda} onChange={e=>f('moneda',e.target.value)} style={{width:80,flexShrink:0}}>
+                {['USD','ARS'].map(o=><option key={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        {montoCalc > 0 && (
+          <div style={{ background:'var(--verde-light)', border:'1px solid var(--brote)', borderRadius:8, padding:'10px 14px', display:'flex', justifyContent:'space-between' }}>
+            <span style={{ fontSize:12, color:'var(--musgo)' }}>Monto total</span>
+            <span style={{ fontSize:18, fontWeight:600, color:'var(--musgo)' }}>{form.moneda==='USD'?'U$S ':'$ '}{montoCalc.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</span>
+          </div>
+        )}
+        <div className="grid-2">
+          <div className="field"><label className="label">Fecha entrega</label>
+            <input className="input" type="date" value={form.fecha_entrega} onChange={e=>f('fecha_entrega',e.target.value)} style={{width:'100%'}}/>
+          </div>
+          <div className="field"><label className="label">Observaciones</label>
+            <input className="input" value={form.observaciones} onChange={e=>f('observaciones',e.target.value)} placeholder="Condiciones, aclaraciones..." style={{width:'100%'}}/>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-primary" type="submit" disabled={saving}>{saving?'Guardando...':(isEdit?'Guardar cambios':'Guardar contrato')}</button>
+          <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancelar</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 export default function Ventas() {
   const [viajes,  setViajes]  = useState([])
   const [contratos, setContratos] = useState([])
@@ -1198,137 +1332,18 @@ export default function Ventas() {
             )}
 
             {/* Form nuevo / editar contrato */}
-            {(showFormCt || ctEditando) && (() => {
-              const isEdit = !!ctEditando
-              const [ctForm, setCtForm] = React.useState(isEdit ? {
-                fecha_cierre:     ctEditando.fecha_cierre || new Date().toISOString().split('T')[0],
-                campanha:         ctEditando.campanha || '25-26',
-                producto:         ctEditando.producto || 'Soja',
-                numero_contrato:  ctEditando.numero_contrato || '',
-                volumen:          ctEditando.volumen ?? '',
-                unidad:           ctEditando.unidad || 'tn',
-                precio:           ctEditando.precio ?? '',
-                moneda:           ctEditando.moneda || 'USD',
-                fecha_entrega:    ctEditando.fecha_entrega || '',
-                a_nombre:         ctEditando.a_nombre || 'ambos',
-                comprador:        ctEditando.comprador || '',
-                observaciones:    ctEditando.observaciones || '',
-              } : emptyCtForm)
-              const fc = (k,v) => setCtForm(p=>({...p,[k]:v}))
-              const [savingCt, setSavingCt] = React.useState(false)
-              const [confirmDel, setConfirmDel] = React.useState(false)
-              const montoCalc = (parseFloat(ctForm.volumen)||0) * (parseFloat(ctForm.precio)||0)
-
-              async function saveCt(e) {
-                e.preventDefault(); setSavingCt(true)
-                const payload = { ...ctForm, volumen:parseFloat(ctForm.volumen)||null, precio:parseFloat(ctForm.precio)||null, monto_total:montoCalc||null }
-                if (isEdit) {
-                  await supabase.from('contratos').update(payload).eq('id', ctEditando.id)
-                  setCtEditando(null)
-                } else {
-                  await supabase.from('contratos').insert(payload)
-                  setShowFormCt(false)
-                }
-                setSavingCt(false); await fetchAll()
-              }
-              async function deleteCt() {
-                setSavingCt(true)
-                await supabase.from('contratos').delete().eq('id', ctEditando.id)
-                setCtEditando(null); await fetchAll()
-              }
-
-              return (
-                <div className="card mb-3" style={{ background: isEdit ? '#FFF9EE' : '#F9F6EE', borderColor: isEdit ? '#C8A96E' : 'var(--paja)' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-                    <h3 style={{ margin:0 }}>{isEdit ? `Editando contrato${ctEditando.numero_contrato ? ' #'+ctEditando.numero_contrato : ''}` : 'Nuevo contrato'}</h3>
-                    {isEdit && !confirmDel && (
-                      <button onClick={()=>setConfirmDel(true)} style={{ background:'#FAECE7', border:'1px solid #F0997B', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer', color:'#993C1D' }}>
-                        🗑 Eliminar
-                      </button>
-                    )}
-                    {isEdit && confirmDel && (
-                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                        <span style={{ fontSize:12, color:'#993C1D' }}>¿Eliminar?</span>
-                        <button onClick={deleteCt} style={{ background:'#993C1D', color:'white', border:'none', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>Sí</button>
-                        <button onClick={()=>setConfirmDel(false)} style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>No</button>
-                      </div>
-                    )}
-                  </div>
-                  <form onSubmit={saveCt} style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                    <div className="grid-2">
-                      <div className="field"><label className="label">Fecha cierre</label>
-                        <input className="input" type="date" value={ctForm.fecha_cierre} onChange={e=>fc('fecha_cierre',e.target.value)} style={{width:'100%'}}/>
-                      </div>
-                      <div className="field"><label className="label">Campaña</label>
-                        <select className="select" value={ctForm.campanha} onChange={e=>fc('campanha',e.target.value)} style={{width:'100%'}}>
-                          {CAMPANHAS.map(c=><option key={c}>{c}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid-2">
-                      <div className="field"><label className="label">Producto</label>
-                        <select className="select" value={ctForm.producto} onChange={e=>fc('producto',e.target.value)} style={{width:'100%'}}>
-                          {PRODUCTOS_CT.map(p=><option key={p}>{p}</option>)}
-                        </select>
-                      </div>
-                      <div className="field"><label className="label">N° de contrato</label>
-                        <input className="input" value={ctForm.numero_contrato} onChange={e=>fc('numero_contrato',e.target.value)} placeholder="ej: 12345 / FYO-2025-001" style={{width:'100%'}}/>
-                      </div>
-                    </div>
-                    <div className="grid-2">
-                      <div className="field"><label className="label">Comprador</label>
-                        <input className="input" value={ctForm.comprador} onChange={e=>fc('comprador',e.target.value)} placeholder="FYO, Bunge..." list="ct-compradores" style={{width:'100%'}}/>
-                        <datalist id="ct-compradores">{COMPRADORES_CT.map(c=><option key={c} value={c}/>)}</datalist>
-                      </div>
-                      <div className="field"><label className="label">A nombre de</label>
-                        <div style={{display:'flex',gap:6}}>
-                          {['Fer','Leo','ambos'].map(o=>(
-                            <button key={o} type="button" onClick={()=>fc('a_nombre',o)}
-                              style={{ flex:1, padding:'8px 4px', borderRadius:6, fontSize:12, cursor:'pointer', border:'1px solid', fontFamily:'inherit', background:ctForm.a_nombre===o?'var(--pasto)':'transparent', color:ctForm.a_nombre===o?'#F5F0E4':'var(--arcilla)', borderColor:ctForm.a_nombre===o?'var(--pasto)':'var(--border)' }}>{o}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid-2">
-                      <div className="field"><label className="label">Volumen</label>
-                        <div style={{display:'flex',gap:6}}>
-                          <input className="input" type="number" value={ctForm.volumen} onChange={e=>fc('volumen',e.target.value)} placeholder="0" style={{width:'100%'}}/>
-                          <select className="select" value={ctForm.unidad} onChange={e=>fc('unidad',e.target.value)} style={{width:80,flexShrink:0}}>
-                            {['tn','qq','kg'].map(o=><option key={o}>{o}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="field"><label className="label">Precio</label>
-                        <div style={{display:'flex',gap:6}}>
-                          <input className="input" type="number" value={ctForm.precio} onChange={e=>fc('precio',e.target.value)} placeholder="0.00" style={{width:'100%'}}/>
-                          <select className="select" value={ctForm.moneda} onChange={e=>fc('moneda',e.target.value)} style={{width:80,flexShrink:0}}>
-                            {['USD','ARS'].map(o=><option key={o}>{o}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                    {montoCalc > 0 && (
-                      <div style={{ background:'var(--verde-light)', border:'1px solid var(--brote)', borderRadius:8, padding:'10px 14px', display:'flex', justifyContent:'space-between' }}>
-                        <span style={{ fontSize:12, color:'var(--musgo)' }}>Monto total</span>
-                        <span style={{ fontSize:18, fontWeight:600, color:'var(--musgo)' }}>{ctForm.moneda==='USD'?'U$S ':'$ '}{montoCalc.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</span>
-                      </div>
-                    )}
-                    <div className="grid-2">
-                      <div className="field"><label className="label">Fecha entrega</label>
-                        <input className="input" type="date" value={ctForm.fecha_entrega} onChange={e=>fc('fecha_entrega',e.target.value)} style={{width:'100%'}}/>
-                      </div>
-                      <div className="field"><label className="label">Observaciones</label>
-                        <input className="input" value={ctForm.observaciones} onChange={e=>fc('observaciones',e.target.value)} placeholder="Condiciones, aclaraciones..." style={{width:'100%'}}/>
-                      </div>
-                    </div>
-                    <div style={{display:'flex',gap:8}}>
-                      <button className="btn btn-primary" type="submit" disabled={savingCt}>{savingCt?'Guardando...':(isEdit?'Guardar cambios':'Guardar contrato')}</button>
-                      <button className="btn btn-secondary" type="button" onClick={()=>{ setShowFormCt(false); setCtEditando(null) }}>Cancelar</button>
-                    </div>
-                  </form>
-                </div>
-              )
-            })()}
+            {(showFormCt || ctEditando) && (
+              <FormContrato
+                key={ctEditando?.id || 'new'}
+                contrato={ctEditando}
+                onSave={async () => { setShowFormCt(false); setCtEditando(null); await fetchAll() }}
+                onCancel={() => { setShowFormCt(false); setCtEditando(null) }}
+                fetchAll={fetchAll}
+                supabase={supabase}
+                CAMPANHAS={CAMPANHAS}
+                COMPRADORES_CT={COMPRADORES_CT}
+              />
+            )}
 
             {/* Tabla */}
             <div className="card" style={{ padding:0, overflowX:'auto' }}>
