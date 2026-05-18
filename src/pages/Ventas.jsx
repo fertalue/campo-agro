@@ -948,98 +948,129 @@ export default function Ventas() {
 
         {/* ── Panel contratos en resumen ── */}
         {(() => {
-          const ctFiltrados = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
-          if (ctFiltrados.length === 0) return null
-          // contractuado en kg (convertido desde tn/qq/kg del contrato)
-          // entregado en kg (neto_romaneo): todos los viajes de Venta del grano/campana
-          const porGrano = {}
-          ctFiltrados.forEach(ct => {
-            const vol = ct.volumen || 0
-            const volKg = ct.unidad === 'qq' ? vol * 100 : ct.unidad === 'kg' ? vol : vol * 1000
-            if (!porGrano[ct.producto]) porGrano[ct.producto] = { contractuado: 0, monto: 0, contratos: 0, entregado: 0 }
-            porGrano[ct.producto].contractuado += volKg
-            porGrano[ct.producto].monto        += ct.monto_total || 0
-            porGrano[ct.producto].contratos    += 1
-          })
-          // Sumar viajes de venta por grano (campana incluida en ctFiltrados)
-          const campanasCt = [...new Set(ctFiltrados.map(c => c.campanha))]
-          viajes.filter(v => v.tipo === 'Venta' && campanasCt.includes(v.campanha)).forEach(v => {
-            const g = v.grano
-            if (!porGrano[g]) porGrano[g] = { contractuado: 0, monto: 0, contratos: 0, entregado: 0 }
-            porGrano[g].entregado += v.neto_romaneo || 0
-          })
-          // Por companhia: Fer / Leo / alquiler
-          const porCompanhia = { Fer: 0, Leo: 0, ambos: 0 }
-          ctFiltrados.forEach(ct => { if (ct.a_nombre in porCompanhia) porCompanhia[ct.a_nombre] += ct.volumen || 0 })
-          const totalCt = ctFiltrados.reduce((a,b) => a + (b.volumen||0), 0)
-          const totalCtMonto = ctFiltrados.reduce((a,b) => a + (b.monto_total||0), 0)
+          const ctRes = contratos.filter(ct => fCampanha.length === 0 || fCampanha.includes(ct.campanha))
+          if (ctRes.length === 0 && distrib.length === 0) return null
+
+          // Para cada grano en distrib, calcular contratos y entregas por persona
+          const granoData = distrib.map(d => {
+            const grano = d.grano
+
+            // Contratos por persona (tn -> kg). "ambos" se parte 50/50
+            const toKg = ct => {
+              const v = ct.volumen || 0
+              return ct.unidad === 'qq' ? v * 100 : ct.unidad === 'kg' ? v : v * 1000
+            }
+            const ctGrano = ctRes.filter(ct => ct.producto === grano)
+            const ctFerKg   = ctGrano.filter(ct => ct.a_nombre === 'Fer').reduce((a,c) => a + toKg(c), 0)
+                            + ctGrano.filter(ct => ct.a_nombre === 'ambos').reduce((a,c) => a + toKg(c) / 2, 0)
+            const ctLeoKg   = ctGrano.filter(ct => ct.a_nombre === 'Leo').reduce((a,c) => a + toKg(c), 0)
+                            + ctGrano.filter(ct => ct.a_nombre === 'ambos').reduce((a,c) => a + toKg(c) / 2, 0)
+            const nCtFer = ctGrano.filter(ct => ct.a_nombre === 'Fer' || ct.a_nombre === 'ambos').length
+            const nCtLeo = ctGrano.filter(ct => ct.a_nombre === 'Leo' || ct.a_nombre === 'ambos').length
+
+            return {
+              grano,
+              cosechaTotal: d.cosechaTotal,
+              // Fer
+              cuotaFer:   d.cuotaFer,
+              ctFerKg,
+              nCtFer,
+              dispFer:    d.cuotaFer - ctFerKg,
+              entregFer:  d.vendidoFer,
+              restFer:    ctFerKg - d.vendidoFer,
+              // Leo
+              cuotaLeo:   d.cuotaLeo,
+              ctLeoKg,
+              nCtLeo,
+              dispLeo:    d.cuotaLeo - ctLeoKg,
+              entregLeo:  d.vendidoLeo,
+              restLeo:    ctLeoKg - d.vendidoLeo,
+            }
+          }).filter(d => d.cosechaTotal > 0)
+
+          if (granoData.length === 0) return null
+
+          const col = { Fer:'#4A7C3F', Leo:'#C8A96E' }
+          const bg  = { Fer:'#F0F7EE', Leo:'#FAF5EC' }
+          const bd  = { Fer:'#9DC87A', Leo:'#D8C9A8' }
+
           return (
             <div style={{ marginTop:14, gridColumn:'1/-1' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-                <h3 style={{ fontSize:14, margin:0 }}>Contratos</h3>
-                <span style={{ fontSize:11, color:'var(--text-muted)' }}>{ctFiltrados.length} contratos · {totalCt.toLocaleString('es-AR')} tn · U$S {Math.round(totalCtMonto).toLocaleString('es-AR')}</span>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                {/* Por grano: contractuado vs entregado */}
-                <div className="card" style={{ padding:'14px 16px' }}>
-                  <div style={{ fontSize:12, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Contractuado vs entregado</div>
-                  {Object.entries(porGrano).map(([grano, data]) => {
-                    const pct = data.contractuado > 0 ? Math.min((data.entregado||0) / data.contractuado * 100, 100) : 0
-                    const col = PROD_COLORS[grano] || '#888'
-                    return (
-                      <div key={grano} style={{ marginBottom:12 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                            <div style={{ width:10, height:10, borderRadius:'50%', background:col, flexShrink:0 }}/>
-                            <span style={{ fontSize:13, fontWeight:500 }}>{grano}</span>
-                            <span style={{ fontSize:11, color:'var(--text-muted)' }}>({data.contratos} cont.)</span>
+              <h3 style={{ fontSize:14, margin:'0 0 12px 0' }}>Contratos y distribución</h3>
+              {granoData.map(d => (
+                <div key={d.grano} className="card" style={{ marginBottom:14, padding:'16px 18px' }}>
+                  {/* Header grano */}
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                    <div style={{ width:12, height:12, borderRadius:'50%', background:PROD_COLORS[d.grano]||'#888', flexShrink:0 }}/>
+                    <span style={{ fontSize:15, fontWeight:600, color:'var(--tierra)' }}>{d.grano}</span>
+                    <span style={{ fontSize:11, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
+                  </div>
+                  {/* Dos columnas Fer | Leo */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                    {[
+                      { nombre:'Fer', cuota:d.cuotaFer, ct:d.ctFerKg, nCt:d.nCtFer, disp:d.dispFer, entreg:d.entregFer, rest:d.restFer },
+                      { nombre:'Leo', cuota:d.cuotaLeo, ct:d.ctLeoKg, nCt:d.nCtLeo, disp:d.dispLeo, entreg:d.entregLeo, rest:d.restLeo },
+                    ].map(p => (
+                      <div key={p.nombre} style={{ background:bg[p.nombre], border:`1px solid ${bd[p.nombre]}`, borderRadius:10, padding:'14px 16px' }}>
+                        {/* Nombre */}
+                        <div style={{ fontSize:13, fontWeight:700, color:col[p.nombre], marginBottom:12, textTransform:'uppercase', letterSpacing:'0.06em' }}>{p.nombre}</div>
+
+                        {/* Le corresponde */}
+                        <div style={{ marginBottom:10 }}>
+                          <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>Le corresponde</div>
+                          <div style={{ fontSize:20, fontWeight:700, color:col[p.nombre] }}>{fmtTn(p.cuota)}</div>
+                        </div>
+
+                        {/* Separador */}
+                        <div style={{ height:1, background:bd[p.nombre], margin:'10px 0' }}/>
+
+                        {/* Contratos */}
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                          <div>
+                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Contratos ({p.nCt})</div>
+                            <div style={{ fontSize:15, fontWeight:600, color:'var(--tierra)' }}>{fmtTn(p.ct)}</div>
                           </div>
-                          <div style={{ textAlign:'right', fontSize:12 }}>
-                            <span style={{ fontWeight:600 }}>{((data.entregado||0)/1000).toFixed(1)}</span>
-                            <span style={{ color:'var(--text-muted)' }}> / {(data.contractuado/1000).toFixed(1)} tn</span>
+                          <div style={{ textAlign:'right' }}>
+                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Disponible</div>
+                            <div style={{ fontSize:13, fontWeight:600, color: p.disp >= 0 ? col[p.nombre] : '#993C1D' }}>
+                              {p.disp >= 0 ? `+ ${fmtTn(p.disp)}` : `- ${fmtTn(Math.abs(p.disp))}`}
+                            </div>
                           </div>
                         </div>
-                        <div style={{ height:10, background:'#E8D5A3', borderRadius:5, overflow:'hidden', position:'relative' }}>
-                          <div style={{ position:'absolute', height:10, borderRadius:5, background:col, width:`${pct}%`, transition:'width .4s', opacity:0.85 }}/>
+
+                        {/* Barra contratos vs corresponde */}
+                        <div style={{ height:6, background:'#E8D5A3', borderRadius:3, overflow:'hidden', marginBottom:10 }}>
+                          <div style={{ height:6, borderRadius:3, background:col[p.nombre], width:`${Math.min(p.cuota > 0 ? p.ct/p.cuota*100 : 0, 100)}%`, opacity:0.8 }}/>
                         </div>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginTop:3 }}>
-                          <span style={{ fontSize:10, color:'var(--text-muted)' }}>{Math.round(pct)}% entregado</span>
-                          <span style={{ fontSize:10, color:'var(--text-muted)' }}>Resta: {(((data.contractuado||0)-(data.entregado||0))/1000).toFixed(1)} tn</span>
+
+                        {/* Separador */}
+                        <div style={{ height:1, background:bd[p.nombre], margin:'10px 0' }}/>
+
+                        {/* Entregado y quedan */}
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                          <div>
+                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Entregado</div>
+                            <div style={{ fontSize:15, fontWeight:600, color:'var(--musgo)' }}>{fmtTn(p.entreg)}</div>
+                          </div>
+                          <div style={{ textAlign:'right' }}>
+                            <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 }}>Quedan de entregar</div>
+                            <div style={{ fontSize:13, fontWeight:600, color: p.rest > 0 ? '#993C1D' : 'var(--musgo)' }}>
+                              {p.rest > 0 ? fmtTn(p.rest) : '✓ Completo'}
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Barra entregado vs contratos */}
+                        {p.ct > 0 && (
+                          <div style={{ height:6, background:'#E8D5A3', borderRadius:3, overflow:'hidden', marginTop:8 }}>
+                            <div style={{ height:6, borderRadius:3, background:'var(--musgo)', width:`${Math.min(p.ct > 0 ? p.entreg/p.ct*100 : 0, 100)}%` }}/>
+                          </div>
+                        )}
                       </div>
-                    )
-                  })}
-                </div>
-                {/* Por companhia */}
-                <div className="card" style={{ padding:'14px 16px' }}>
-                  <div style={{ fontSize:12, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Por compañía</div>
-                  {[['Fer','#4A7C3F','#EBF4E8'],['Leo','#C8A96E','#FAF5EC'],['ambos','#7A9EAD','#E4F0F4']].map(([nombre, col, bg]) => {
-                    const vol = porCompanhia[nombre] || 0
-                    if (vol === 0) return null
-                    const ctNombre = ctFiltrados.filter(ct => ct.a_nombre === nombre)
-                    const montoCt  = ctNombre.reduce((a,b) => a + (b.monto_total||0), 0)
-                    return (
-                      <div key={nombre} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid #EDE0C8' }}>
-                        <div style={{ width:36, height:36, borderRadius:'50%', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:600, color:col, flexShrink:0 }}>
-                          {nombre === 'ambos' ? 'F+L' : nombre}
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:500 }}>{nombre === 'ambos' ? 'Ambos' : nombre}</div>
-                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>U$S {Math.round(montoCt).toLocaleString('es-AR')}</div>
-                        </div>
-                        <div style={{ textAlign:'right' }}>
-                          <div style={{ fontSize:16, fontWeight:600, color:col }}>{vol.toLocaleString('es-AR')} tn</div>
-                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>{totalCt > 0 ? Math.round(vol/totalCt*100) : 0}% del total</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div style={{ marginTop:12, padding:'8px 10px', background:'#F5F0E8', borderRadius:7, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ fontSize:11, color:'var(--arcilla)', fontWeight:500 }}>Total contractuado</span>
-                    <span style={{ fontSize:14, fontWeight:700, color:'var(--tierra)' }}>{totalCt.toLocaleString('es-AR')} tn</span>
+                    ))}
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
           )
         })()}
