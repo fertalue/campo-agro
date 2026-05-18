@@ -1104,66 +1104,6 @@ export default function Ventas() {
                 <span style={{ fontSize:11, color:'var(--text-muted)' }}>{ctRes.length} · {totalCt.toLocaleString('es-AR')} tn · U$S {Math.round(totalCtM).toLocaleString('es-AR')}</span>
                 <button className="btn btn-secondary btn-sm" style={{marginLeft:'auto'}} onClick={()=>setTab('contratos')}>Ver todos</button>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:14 }}>
-                <div className="card" style={{padding:'14px 16px'}}>
-                  <div style={{ fontSize:11, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Por grano — contractuado vs entregado</div>
-                  {Object.entries(porGrano).map(([grano, data]) => {
-                    const pct = data.contractuado > 0 ? Math.min(data.entregado/data.contractuado*100,100) : 0
-                    const col = PROD_COLORS[grano]||'#888'
-                    return (
-                      <div key={grano} style={{marginBottom:12}}>
-                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                          <div style={{display:'flex',alignItems:'center',gap:6}}>
-                            <div style={{width:10,height:10,borderRadius:'50%',background:col,flexShrink:0}}/>
-                            <span style={{fontSize:13,fontWeight:500}}>{grano}</span>
-                            <span style={{fontSize:11,color:'var(--text-muted)'}}>({data.n} cont.)</span>
-                          </div>
-                          <div style={{fontSize:12}}>
-                            <span style={{fontWeight:600}}>{(data.entregado/1000).toFixed(1)}</span>
-                            <span style={{color:'var(--text-muted)'}}> / {(data.contractuado/1000).toFixed(1)} tn</span>
-                          </div>
-                        </div>
-                        <div style={{height:10,background:'#E8D5A3',borderRadius:5,overflow:'hidden'}}>
-                          <div style={{height:10,borderRadius:5,background:col,width:pct+'%',opacity:0.85}}/>
-                        </div>
-                        <div style={{display:'flex',justifyContent:'space-between',marginTop:3,fontSize:10,color:'var(--text-muted)'}}>
-                          <span>{Math.round(pct)}% entregado</span>
-                          <span>Resta: {((data.contractuado-data.entregado)/1000).toFixed(1)} tn</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="card" style={{padding:'14px 16px'}}>
-                  <div style={{ fontSize:11, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Por compañía</div>
-                  {[['Fer','#4A7C3F','#EBF4E8'],['Leo','#C8A96E','#FAF5EC'],['ambos','#7A9EAD','#E4F0F4']].map(([n,col,bg]) => {
-                    const vol = porComp[n]||0
-                    if (!vol) return null
-                    return (
-                      <div key={n} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderBottom:'1px solid #EDE0C8'}}>
-                        <div style={{width:34,height:34,borderRadius:'50%',background:bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:col,flexShrink:0}}>
-                          {n==='ambos'?'F+L':n}
-                        </div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:13,fontWeight:500}}>{n==='ambos'?'Ambos':n}</div>
-                          <div style={{height:5,background:'#E8D5A3',borderRadius:3,marginTop:4,overflow:'hidden'}}>
-                            <div style={{height:5,borderRadius:3,background:col,width:(totalCt>0?vol/totalCt*100:0)+'%'}}/>
-                          </div>
-                        </div>
-                        <div style={{textAlign:'right',flexShrink:0}}>
-                          <div style={{fontSize:14,fontWeight:600,color:col}}>{(vol/1000).toFixed(1)} tn</div>
-                          <div style={{fontSize:10,color:'var(--text-muted)'}}>{totalCt>0?Math.round(vol/totalCt*100):0}%</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div style={{marginTop:12,padding:'8px 10px',background:'#F5F0E8',borderRadius:7,display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontSize:11,color:'var(--arcilla)',fontWeight:500}}>Total</span>
-                    <span style={{fontSize:14,fontWeight:700,color:'var(--tierra)'}}>{(totalCt/1000).toFixed(1)} tn</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           )
         })()}
 
@@ -1334,35 +1274,6 @@ export default function Ventas() {
               ))}
             </div>
 
-            {/* Resumen por grano */}
-            {Object.keys(porGranoCt).length > 0 && (
-              <div className="card" style={{ marginBottom:14 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:'var(--arcilla)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Contractuado vs entregado por grano</div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:12 }}>
-                  {Object.entries(porGranoCt).map(([grano, data]) => {
-                    const pct = data.contractuado > 0 ? Math.min(data.entregado/data.contractuado*100,100) : 0
-                    const col = PROD_COLORS[grano]||'#888'
-                    return (
-                      <div key={grano} style={{ background:'#FAF7F0', borderRadius:8, padding:'12px 14px', border:'1px solid #E8D5A3' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-                          <div style={{ width:12, height:12, borderRadius:'50%', background:col }}/>
-                          <span style={{ fontSize:13, fontWeight:600 }}>{grano}</span>
-                          <span style={{ fontSize:10, color:'var(--text-muted)', marginLeft:'auto' }}>{data.n} cont.</span>
-                        </div>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                          <div><div style={{ fontSize:10, color:'var(--text-muted)' }}>Contractuado</div><div style={{ fontSize:15, fontWeight:700, color:col }}>{(data.contractuado/1000).toFixed(1)} tn</div></div>
-                          <div style={{ textAlign:'right' }}><div style={{ fontSize:10, color:'var(--text-muted)' }}>Entregado</div><div style={{ fontSize:15, fontWeight:700, color:'var(--musgo)' }}>{(data.entregado/1000).toFixed(1)} tn</div></div>
-                        </div>
-                        <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden', marginBottom:4 }}>
-                          <div style={{ height:8, borderRadius:4, background:col, width:pct+'%', opacity:0.85 }}/>
-                        </div>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text-muted)' }}>
-                          <span>{Math.round(pct)}% entregado</span>
-                          <span>Resta: {((data.contractuado-data.entregado)/1000).toFixed(1)} tn</span>
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
               </div>
             )}
