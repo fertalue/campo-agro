@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+﻿import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -378,38 +378,109 @@ function FormViaje({ onSave, onCancel }) {
 }
 
 // ── Formulario cosecha ──────────────────────────────────────────────────────
-function FormCosecha({ onSave, onCancel }) {
-  const [form, setForm] = useState({ fecha: new Date().toISOString().split('T')[0], campanha:'25-26', grano:'Maíz', neto_romaneo:'' })
+function FormCosecha({ onSave, onCancel, cosechaEdit }) {
+  const esNueva = !cosechaEdit
+  const [form, setForm] = useState(cosechaEdit ? {
+    fecha:        cosechaEdit.fecha || new Date().toISOString().split('T')[0],
+    campanha:     cosechaEdit.campanha || '25-26',
+    grano:        cosechaEdit.grano || 'Maíz',
+    neto_romaneo: cosechaEdit.neto_romaneo || '',
+    kg_alquiler:  cosechaEdit.kg_alquiler || '',
+    kg_fer:       cosechaEdit.kg_fer || '',
+    kg_leo:       cosechaEdit.kg_leo || '',
+  } : { fecha: new Date().toISOString().split('T')[0], campanha:'25-26', grano:'Maíz', neto_romaneo:'', kg_alquiler:'', kg_fer:'', kg_leo:'' })
+  const f = (k,v) => setForm(p => ({...p,[k]:v}))
   const [saving, setSaving] = useState(false)
+
+  const total = parseFloat(form.neto_romaneo) || 0
+  const sumDist = (parseFloat(form.kg_alquiler)||0) + (parseFloat(form.kg_fer)||0) + (parseFloat(form.kg_leo)||0)
+  const diff = total - sumDist
+  const distOk = total === 0 || Math.abs(diff) < 1
+
   async function submit(e) {
-    e.preventDefault(); setSaving(true)
-    await supabase.from('granos_cosecha').insert({ ...form, neto_romaneo: parseFloat(form.neto_romaneo)||null })
+    e.preventDefault()
+    if (!distOk) { alert('La suma de la distribución no cierra con el total. Diferencia: ' + Math.round(diff) + ' kg'); return }
+    setSaving(true)
+    const payload = {
+      fecha: form.fecha, campanha: form.campanha, grano: form.grano,
+      neto_romaneo: parseFloat(form.neto_romaneo) || null,
+      kg_alquiler:  parseFloat(form.kg_alquiler)  || null,
+      kg_fer:       parseFloat(form.kg_fer)        || null,
+      kg_leo:       parseFloat(form.kg_leo)        || null,
+    }
+    if (cosechaEdit) {
+      await supabase.from('granos_cosecha').update(payload).eq('id', cosechaEdit.id)
+    } else {
+      await supabase.from('granos_cosecha').insert(payload)
+    }
     setSaving(false); onSave()
   }
+
+  const si = { padding:'6px 8px', border:'1px solid #D8C9A8', borderRadius:6, fontSize:13, fontFamily:'inherit', width:'100%', background:'#FDFAF4' }
+  const campanha2526 = form.campanha === '25-26'
+
   return (
     <div className="card mb-3" style={{ background:'#F5F9F0', borderColor:'var(--brote)' }}>
-      <h3 style={{ marginBottom:14 }}>Registrar cosecha</h3>
+      <h3 style={{ marginBottom:14 }}>{esNueva ? 'Registrar cosecha' : `Editar cosecha — ${cosechaEdit.grano} ${cosechaEdit.campanha}`}</h3>
       <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:12 }}>
         <div className="grid-2">
           <div className="field"><label className="label">Fecha</label>
-            <input className="input" type="date" value={form.fecha} onChange={e=>setForm(p=>({...p,fecha:e.target.value}))} style={{width:'100%'}}/>
+            <input className="input" type="date" value={form.fecha} onChange={e=>f('fecha',e.target.value)} style={{width:'100%'}}/>
           </div>
           <div className="field"><label className="label">Campaña</label>
-            <select className="select" value={form.campanha} onChange={e=>setForm(p=>({...p,campanha:e.target.value}))} style={{width:'100%'}}>
+            <select className="select" value={form.campanha} onChange={e=>f('campanha',e.target.value)} style={{width:'100%'}}>
               {CAMPANHAS.map(c=><option key={c}>{c}</option>)}
             </select>
           </div>
         </div>
         <div className="grid-2">
           <div className="field"><label className="label">Grano</label>
-            <select className="select" value={form.grano} onChange={e=>setForm(p=>({...p,grano:e.target.value}))} style={{width:'100%'}}>
+            <select className="select" value={form.grano} onChange={e=>f('grano',e.target.value)} style={{width:'100%'}}>
               {GRANOS.map(g=><option key={g}>{g}</option>)}
             </select>
           </div>
-          <div className="field"><label className="label">Total cosechado (kg Neto Romaneo)</label>
-            <input className="input" type="number" value={form.neto_romaneo} onChange={e=>setForm(p=>({...p,neto_romaneo:e.target.value}))} style={{width:'100%'}} required/>
+          <div className="field"><label className="label">Total cosechado (kg)</label>
+            <input className="input" type="number" value={form.neto_romaneo} onChange={e=>f('neto_romaneo',e.target.value)} style={{width:'100%'}} required/>
           </div>
         </div>
+
+        {/* Distribución por kg */}
+        <div style={{ background: campanha2526 ? '#EAF2F8' : '#F5F0E8', border:`1px solid ${campanha2526 ? '#7A9EAD' : '#D8C9A8'}`, borderRadius:8, padding:'12px 14px' }}>
+          <div style={{ fontSize:11, fontWeight:600, color: campanha2526 ? '#2C5A6A' : '#7A6040', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>
+            {campanha2526 ? 'Distribución personalizada (kg)' : 'Distribución — calculada automáticamente (27% / 50% / 50%)'}
+          </div>
+          {campanha2526 ? (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+              {[['kg_alquiler','Alquiler (padre)','#A0714F'],['kg_fer','Fer','#4A7C3F'],['kg_leo','Leo','#C8A96E']].map(([k,lbl,col]) => (
+                <div key={k}>
+                  <div style={{ fontSize:10, color: col, fontWeight:600, textTransform:'uppercase', marginBottom:4 }}>{lbl}</div>
+                  <input type="number" value={form[k]} onChange={e=>f(k,e.target.value)} placeholder="0"
+                    style={{ ...si, borderColor: col + '88', borderWidth:1.5 }} />
+                  {form[k] && <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:2 }}>{((parseFloat(form[k])||0)/1000).toFixed(1)} tn</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+              {[['Alquiler (padre)','#A0714F', total * 0.27],['Fer','#4A7C3F', total * 0.365],['Leo','#C8A96E', total * 0.365]].map(([lbl,col,kg]) => (
+                <div key={lbl} style={{ background:'white', borderRadius:6, padding:'8px 10px', border:`1px solid ${col}44` }}>
+                  <div style={{ fontSize:10, color:col, fontWeight:600, textTransform:'uppercase', marginBottom:4 }}>{lbl}</div>
+                  <div style={{ fontSize:16, fontWeight:600, color:col }}>{(kg/1000).toFixed(1)} tn</div>
+                  <div style={{ fontSize:10, color:'var(--text-muted)' }}>{Math.round(kg).toLocaleString('es-AR')} kg</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {campanha2526 && total > 0 && (
+            <div style={{ marginTop:10, padding:'6px 10px', background: distOk ? '#EBF4E8' : '#FAECE7', borderRadius:6, border:`1px solid ${distOk ? '#9DC87A' : '#F0997B'}`, fontSize:12, display:'flex', justifyContent:'space-between' }}>
+              <span style={{ color: distOk ? 'var(--musgo)' : '#993C1D' }}>
+                {distOk ? '✓ La distribución cierra' : `⚠ Diferencia: ${Math.round(diff).toLocaleString('es-AR')} kg`}
+              </span>
+              <span style={{ color:'var(--text-muted)' }}>Total: {(sumDist/1000).toFixed(1)} / {(total/1000).toFixed(1)} tn</span>
+            </div>
+          )}
+        </div>
+
         <div style={{display:'flex',gap:8}}>
           <button className="btn btn-primary" type="submit" disabled={saving}>{saving?'Guardando...':'Guardar cosecha'}</button>
           <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancelar</button>
@@ -419,7 +490,6 @@ function FormCosecha({ onSave, onCancel }) {
   )
 }
 
-// ── Multi-select para filtros ───────────────────────────────────────────────
 function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
   const [open, setOpen] = React.useState(false)
   const ref = useRef()
@@ -473,6 +543,7 @@ export default function Ventas() {
   const [tab, setTab]         = useState('resumen')
   const [showForm,    setShowForm]    = useState(false)
   const [showCosecha, setShowCosecha] = useState(false)
+  const [cosechaEdit, setCosechaEdit] = useState(null)
   const [fCampanha, setFCampanha] = useState([])
   const [fGrano,    setFGrano]    = useState([])
   const [fTipo,     setFTipo]     = useState([])
@@ -580,32 +651,39 @@ export default function Ventas() {
 
   const granos = Object.keys(byGrano)
 
-  // Distribución
-  const categorias = { 'Maíz': 0, 'Soja': 0 }
-  cosechaFiltrada.forEach(c => {
-    if (c.grano === 'Maíz') categorias['Maíz'] += c.neto_romaneo || 0
-    else categorias['Soja'] += c.neto_romaneo || 0
-  })
-
-  const distrib = Object.entries(categorias).map(([cat, cosechaTotal]) => {
-    const alquiler   = cosechaTotal * ALQUILER_PCT
-    const disponible = cosechaTotal * (1 - ALQUILER_PCT)
-    const cuotaFer   = disponible / 2
-    const cuotaLeo   = disponible / 2
-    const esCategoria = (grano) => cat === 'Maíz' ? grano === 'Maíz' : (grano === 'Soja' || grano === 'Soja semilla')
-    const viajesCat  = viajes.filter(v => matchArr(fCampanha, v.campanha) && esCategoria(v.grano) && v.tipo === 'Venta')
+  // Distribución — por grano individual (no agrupado en categorias)
+  const distrib = GRANOS.map(grano => {
+    const cosechasGrano = cosechaFiltrada.filter(c => c.grano === grano)
+    const cosechaTotal  = cosechasGrano.reduce((a,b) => a + (b.neto_romaneo||0), 0)
+    if (cosechaTotal === 0) return null
+    // Si algún registro tiene kg personalizados, usarlos (suma de todos los registros del grano)
+    const tieneKgPersonalizado = cosechasGrano.some(c => c.kg_alquiler != null || c.kg_fer != null || c.kg_leo != null)
+    let alquiler, cuotaFer, cuotaLeo
+    if (tieneKgPersonalizado) {
+      alquiler  = cosechasGrano.reduce((a,b) => a + (b.kg_alquiler||0), 0)
+      cuotaFer  = cosechasGrano.reduce((a,b) => a + (b.kg_fer||0), 0)
+      cuotaLeo  = cosechasGrano.reduce((a,b) => a + (b.kg_leo||0), 0)
+    } else {
+      alquiler  = cosechaTotal * ALQUILER_PCT
+      const disponible = cosechaTotal * (1 - ALQUILER_PCT)
+      cuotaFer  = disponible / 2
+      cuotaLeo  = disponible / 2
+    }
+    const viajesCat  = viajes.filter(v => matchArr(fCampanha, v.campanha) && v.grano === grano && v.tipo === 'Venta')
     const vendidoFer = viajesCat.filter(v => v.titular === 'Fer').reduce((a,b) => a + (b.neto_romaneo||0), 0)
     const vendidoLeo = viajesCat.filter(v => v.titular === 'Leo').reduce((a,b) => a + (b.neto_romaneo||0), 0)
-    const viajesAlq  = viajes.filter(v => matchArr(fCampanha, v.campanha) && esCategoria(v.grano) && v.tipo === 'Alquiler')
+    const viajesAlq  = viajes.filter(v => matchArr(fCampanha, v.campanha) && v.grano === grano && v.tipo === 'Alquiler')
     const entregadoAlquiler = viajesAlq.reduce((a,b) => a + (b.neto_romaneo||0), 0)
     return {
-      cat, cosechaTotal, alquiler, disponible, cuotaFer, cuotaLeo,
+      grano, cosechaTotal, alquiler, cuotaFer, cuotaLeo,
       vendidoFer, vendidoLeo, entregadoAlquiler,
-      restanteFer: cuotaFer - vendidoFer,
-      restanteLeo: cuotaLeo - vendidoLeo,
-      restanteAlquiler: alquiler - entregadoAlquiler,
+      tieneKgPersonalizado,
+      restanteFer:      cuotaFer  - vendidoFer,
+      restanteLeo:      cuotaLeo  - vendidoLeo,
+      restanteAlquiler: alquiler  - entregadoAlquiler,
     }
-  }).filter(d => d.cosechaTotal > 0)
+  }).filter(Boolean)
+
 
   return (
     <div>
@@ -647,7 +725,7 @@ export default function Ventas() {
 
       {/* Tabs */}
       <div className="vt-tabs">
-        {[['resumen','Resumen'],['distribucion','Distribución'],['viajes','Viajes'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
+        {[['resumen','Resumen'],['cosecha','Cosecha'],['distribucion','Distribución'],['viajes','Viajes'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
           <button key={id} className={`vt-tab${tab===id?' on':''}`} onClick={()=>setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -870,6 +948,83 @@ export default function Ventas() {
       )}
 
       {/* ─────────── DISTRIBUCIÓN ─────────── */}
+
+      {tab === 'cosecha' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div style={{ fontSize:13, color:'var(--arcilla)' }}>
+              {cosecha.length} registros · {cosechaFiltrada.length} en filtro actual
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => { setCosechaEdit(null); setShowCosecha(v => !v) }}>
+              {showCosecha && !cosechaEdit ? 'Cancelar' : '+ Nueva cosecha'}
+            </button>
+          </div>
+
+          {showCosecha && !cosechaEdit && (
+            <FormCosecha
+              onSave={async () => { setShowCosecha(false); await fetchAll() }}
+              onCancel={() => setShowCosecha(false)} />
+          )}
+          {cosechaEdit && (
+            <FormCosecha
+              cosechaEdit={cosechaEdit}
+              onSave={async () => { setCosechaEdit(null); await fetchAll() }}
+              onCancel={() => setCosechaEdit(null)} />
+          )}
+
+          {/* Tabla de cosechas */}
+          <div className="card" style={{ padding:0, overflowX:'auto' }}>
+            <table className="vt-tbl">
+              <thead><tr>
+                <th>Campaña</th><th>Fecha</th><th>Grano</th>
+                <th style={{ textAlign:'right' }}>Total (tn)</th>
+                <th style={{ textAlign:'right', color:'#A0714F' }}>Alquiler</th>
+                <th style={{ textAlign:'right', color:'#4A7C3F' }}>Fer</th>
+                <th style={{ textAlign:'right', color:'#C8A96E' }}>Leo</th>
+                <th style={{ textAlign:'center' }}>Tipo dist.</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {cosecha.map(c => {
+                  const total = c.neto_romaneo || 0
+                  const esPersonalizado = c.kg_alquiler != null || c.kg_fer != null || c.kg_leo != null
+                  const kgAlq = esPersonalizado ? (c.kg_alquiler||0) : total * ALQUILER_PCT
+                  const kgFer = esPersonalizado ? (c.kg_fer||0)     : total * (1-ALQUILER_PCT) / 2
+                  const kgLeo = esPersonalizado ? (c.kg_leo||0)     : total * (1-ALQUILER_PCT) / 2
+                  return (
+                    <tr key={c.id}>
+                      <td><span className="cc chip-muted">{c.campanha}</span></td>
+                      <td style={{ color:'var(--text-muted)' }}>{fmtFecha(c.fecha)}</td>
+                      <td>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <div style={{ width:10, height:10, borderRadius:'50%', background: GRANO_COLOR[c.grano]||'#888', flexShrink:0 }}/>
+                          {c.grano}
+                        </div>
+                      </td>
+                      <td style={{ textAlign:'right', fontWeight:600 }}>{fmtTn(total)}</td>
+                      <td style={{ textAlign:'right', color:'#A0714F' }}>{fmtTn(kgAlq)}</td>
+                      <td style={{ textAlign:'right', color:'#4A7C3F' }}>{fmtTn(kgFer)}</td>
+                      <td style={{ textAlign:'right', color:'#C8A96E' }}>{fmtTn(kgLeo)}</td>
+                      <td style={{ textAlign:'center' }}>
+                        <span className={`cc ${esPersonalizado ? 'chip-sky' : 'chip-muted'}`}>
+                          {esPersonalizado ? 'Manual' : '27/50/50'}
+                        </span>
+                      </td>
+                      <td>
+                        <button onClick={() => { setCosechaEdit(c); setShowCosecha(false) }}
+                          style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:5, padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--arcilla)' }}>
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {tab === 'distribucion' && (
         <div>
           {fCampanha.length !== 1 && (
@@ -884,12 +1039,12 @@ export default function Ventas() {
           ) : distrib.map(d => (
             <div key={d.cat} className="card" style={{ marginBottom:16 }}>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-                <div style={{ width:14, height:14, borderRadius:'50%', background: d.cat === 'Maíz' ? '#C8A96E' : '#4A7C3F' }}/>
-                <h3 style={{ fontSize:15 }}>{d.cat}</h3>
+                <div style={{ width:14, height:14, borderRadius:'50%', background: GRANO_COLOR[d.grano] || '#4A7C3F' }}/>
+                <h3 style={{ fontSize:15 }}>{d.grano}</h3>
                 <span style={{ fontSize:12, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
               </div>
               <div style={{ display:'flex', height:36, borderRadius:8, overflow:'hidden', marginBottom:16, fontSize:11, fontWeight:500 }}>
-                <div style={{ flex: d.alquiler, background:'#A0714F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:60 }}><span>Alquiler 27%</span></div>
+                <div style={{ flex: d.alquiler, background:'#A0714F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:60 }}><span>{d.tieneKgPersonalizado ? 'Alquiler' : 'Alquiler 27%'}</span></div>
                 <div style={{ flex: d.cuotaFer, background:'#4A7C3F', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}><span>Fer</span></div>
                 <div style={{ flex: d.cuotaLeo, background:'#C8A96E', display:'flex', alignItems:'center', justifyContent:'center', color:'white', gap:4, minWidth:50 }}><span>Leo</span></div>
               </div>
@@ -911,7 +1066,7 @@ export default function Ventas() {
                 ].map(p => (
                   <div key={p.nombre} style={{ background: p.bg, border:`1px solid ${p.border}`, borderRadius:10, padding:'14px' }}>
                     <div style={{ fontSize:10, fontWeight:600, color: p.col, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>{p.nombre}</div>
-                    <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>50% del disponible</div>
+                    <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:10 }}>{d.tieneKgPersonalizado ? 'kg asignados' : '50% del disponible'}</div>
                     <div style={{ marginBottom:8 }}><div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Le corresponde</div><div style={{ fontSize:18, fontWeight:600, color: p.col }}>{fmtTn(p.cuota)}</div></div>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
                       <div><div style={{ fontSize:11, color:'var(--text-muted)' }}>Ya vendió</div><div style={{ fontSize:14, fontWeight:600, color:'#4A7C3F' }}>{fmtTn(p.vendido)}</div></div>
