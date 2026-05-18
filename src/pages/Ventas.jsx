@@ -1274,6 +1274,10 @@ export default function Ventas() {
               ))}
             </div>
 
+                </div>
+              </div>
+            )}
+
             {/* Form nuevo / editar contrato */}
             {(showFormCt || ctEditando) && (
               <FormContrato
