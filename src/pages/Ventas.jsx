@@ -1531,3 +1531,4 @@ export default function Ventas() {
     </div>
   )
 }
+
