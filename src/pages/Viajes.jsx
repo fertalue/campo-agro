@@ -72,7 +72,7 @@ export default function Viajes() {
         <div>
           <h2>Viajes al campo</h2>
           <p style={{ fontSize: 12, color: 'var(--arcilla)', marginTop: 2 }}>
-            {viajesFiltrados.length}{viajes.length !== viajesFiltrados.length ?  de  : ''} visitas
+            {viajesFiltrados.length}{viajes.length !== viajesFiltrados.length ? ' de ' + viajes.length : ''} visitas
           </p>
         </div>
         {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(!showForm)}>
