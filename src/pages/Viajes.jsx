@@ -16,6 +16,8 @@ export default function Viajes() {
   const canEdit = isAdmin || puedeEditar('viajes')
   const [viajes, setViajes]   = useState([])
   const [loading, setLoading] = useState(true)
+  const [fCategoria, setFCategoria] = useState('todas')
+  const [fQuien, setFQuien] = useState('todos')
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [form, setForm]       = useState({
@@ -47,8 +49,21 @@ export default function Viajes() {
     setSaving(false)
   }
 
+  const viajesFiltrados = viajes.filter(v => {
+    if (fCategoria !== 'todas' && v.categoria !== fCategoria) return false
+    if (fQuien !== 'todos' && v.quien !== fQuien) return false
+    return true
+  })
   const totalFer = viajes.filter(v => v.quien === 'Fer').length
   const totalLeo = viajes.filter(v => v.quien === 'Leo').length
+  const quienes = [...new Set(viajes.map(v => v.quien).filter(Boolean))].sort()
+  const porCategoria = CATEGORIAS.map(cat => ({
+    cat,
+    total: viajes.filter(v => v.categoria === cat).length,
+    fer:   viajes.filter(v => v.categoria === cat && v.quien === 'Fer').length,
+    leo:   viajes.filter(v => v.categoria === cat && v.quien === 'Leo').length,
+  })).filter(c => c.total > 0)
+  const maxCat = Math.max(...porCategoria.map(c => c.total), 1)
 
   return (
     <div>
@@ -57,7 +72,7 @@ export default function Viajes() {
         <div>
           <h2>Viajes al campo</h2>
           <p style={{ fontSize: 12, color: 'var(--arcilla)', marginTop: 2 }}>
-            {viajes.length} visitas registradas
+            {viajesFiltrados.length}{viajes.length !== viajesFiltrados.length ?  de  : ''} visitas
           </p>
         </div>
         {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(!showForm)}>
@@ -142,22 +157,86 @@ export default function Viajes() {
         </div>
       )}
 
+      {/* Filtros + panel por categoria */}
+      <div style={{ display:'flex', gap:14, marginBottom:14, flexWrap:'wrap', alignItems:'flex-start' }}>
+
+        {/* Filtros */}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, flex:1, padding:'10px 14px', background:'#FDFAF4', border:'1px solid #D8C9A8', borderRadius:10, alignItems:'flex-end' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+            <div style={{ fontSize:10, fontWeight:600, color:'#A08060', textTransform:'uppercase', letterSpacing:'0.05em' }}>Categoría</div>
+            <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+              {['todas', ...CATEGORIAS].map(c => (
+                <button key={c} onClick={() => setFCategoria(c)}
+                  style={{ padding:'5px 10px', borderRadius:6, fontSize:11, cursor:'pointer', border:'1px solid', fontFamily:'inherit', whiteSpace:'nowrap',
+                    background: fCategoria===c ? 'var(--pasto)' : 'transparent',
+                    color: fCategoria===c ? '#F5F0E4' : 'var(--arcilla)',
+                    borderColor: fCategoria===c ? 'var(--pasto)' : '#D8C9A8' }}>
+                  {c === 'todas' ? 'Todas' : c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+            <div style={{ fontSize:10, fontWeight:600, color:'#A08060', textTransform:'uppercase', letterSpacing:'0.05em' }}>Quién</div>
+            <div style={{ display:'flex', gap:4 }}>
+              {['todos', ...quienes].map(q => (
+                <button key={q} onClick={() => setFQuien(q)}
+                  style={{ padding:'5px 10px', borderRadius:6, fontSize:11, cursor:'pointer', border:'1px solid', fontFamily:'inherit',
+                    background: fQuien===q ? '#7A9EAD' : 'transparent',
+                    color: fQuien===q ? '#fff' : 'var(--arcilla)',
+                    borderColor: fQuien===q ? '#7A9EAD' : '#D8C9A8' }}>
+                  {q === 'todos' ? 'Todos' : q}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(fCategoria !== 'todas' || fQuien !== 'todos') && (
+            <button onClick={() => { setFCategoria('todas'); setFQuien('todos') }}
+              style={{ padding:'5px 10px', borderRadius:6, fontSize:11, cursor:'pointer', border:'1px solid #D8C9A8', background:'transparent', color:'var(--arcilla)', fontFamily:'inherit' }}>
+              Limpiar
+            </button>
+          )}
+        </div>
+
+        {/* Panel por categoría */}
+        {porCategoria.length > 0 && (
+          <div style={{ minWidth:180, background:'#FDFAF4', border:'1px solid #D8C9A8', borderRadius:10, padding:'12px 14px' }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'#A08060', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Por categoría</div>
+            {porCategoria.map(({cat, total, fer, leo}) => (
+              <div key={cat} style={{ marginBottom:8, cursor:'pointer' }} onClick={() => setFCategoria(fCategoria===cat?'todas':cat)}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                  <span style={{ fontSize:11, color: fCategoria===cat?'var(--pasto)':'var(--tierra)', fontWeight: fCategoria===cat?600:400 }}>{cat}</span>
+                  <span style={{ fontSize:11, fontWeight:600, color:'var(--tierra)' }}>{total}</span>
+                </div>
+                <div style={{ height:6, background:'#E8D5A3', borderRadius:3, overflow:'hidden', marginBottom:3 }}>
+                  <div style={{ height:6, background: fCategoria===cat?'var(--pasto)':'#7A9EAD', borderRadius:3, width:${total/maxCat*100}% }}/>
+                </div>
+                <div style={{ display:'flex', gap:6, fontSize:10, color:'var(--text-muted)' }}>
+                  {fer > 0 && <span style={{color:'#2E4F26'}}>Fer: {fer}</span>}
+                  {leo > 0 && <span style={{color:'#6B3E22'}}>Leo: {leo}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* List */}
       <div className="card" style={{ padding: 0 }}>
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--arcilla)', fontSize: 13 }}>
             Cargando...
           </div>
-        ) : viajes.length === 0 ? (
+        ) : viajesFiltrados.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--arcilla)', fontSize: 13 }}>
             Todavía no hay visitas registradas
           </div>
         ) : (
           <div>
-            {viajes.map((v, i) => (
+            {viajesFiltrados.map((v, i) => (
               <div key={v.id} style={{
                 display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px',
-                borderBottom: i < viajes.length - 1 ? '1px solid var(--border-light)' : 'none'
+                borderBottom: i < viajesFiltrados.length - 1 ? '1px solid var(--border-light)' : 'none'
               }}>
                 {/* Avatar */}
                 <div style={{
