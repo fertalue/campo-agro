@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -6,7 +6,6 @@ const CENTROS = ['Producción','Costos únicos','Comercializacion','Alquiler','A
 const CAMPANHAS = ['25-26','24-25','23-24']
 const PRIORIDADES = ['alta','media','baja']
 const ESTADOS = ['pendiente','en_progreso','hecho']
-const CATEGORIAS = ['Campo','Taller','Infraestructura','Administración','Otro']
 
 const PRIO_COLOR = { alta:'#993C1D', media:'#6B3E22', baja:'#4A7C3F' }
 const PRIO_BG    = { alta:'#FAECE7', media:'#F5EDD8', baja:'#EBF4E8' }
@@ -24,7 +23,7 @@ function fmtCantidad(v) {
 }
 
 // ── FormTarea ────────────────────────────────────────────────────────────────
-function FormTarea({ tarea, onSave, onCancel }) {
+function FormTarea({ tarea, onSave, onCancel, categorias = ['Campo','Taller','Infraestructura','Otro'] }) {
   const isEdit = !!tarea
   const [form, setForm] = useState(tarea ? {
     titulo: tarea.titulo, descripcion: tarea.descripcion||'',
@@ -77,7 +76,7 @@ function FormTarea({ tarea, onSave, onCancel }) {
         <div className="grid-2">
           <div className="field"><label className="label">Categoría</label>
             <select style={si} value={form.categoria} onChange={e=>f('categoria',e.target.value)}>
-              {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+              {categorias.map(c=><option key={c}>{c}</option>)}
             </select>
           </div>
           <div className="field"><label className="label">Campaña</label>
@@ -240,7 +239,8 @@ export default function Trabajos() {
   const quienRegistra = user?.user_metadata?.nombre || user?.email || ''
 
   const [tab, setTab]         = useState('organizacion')
-  const [tareas, setTareas]   = useState([])
+  const [tareas, setTareas]       = useState([])
+  const [categorias, setCategorias] = useState(['Campo','Taller','Infraestructura','Administración','Otro'])
   const [registros, setRegistros] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -257,12 +257,14 @@ export default function Trabajos() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: t }, { data: r }] = await Promise.all([
+    const [{ data: t }, { data: r }, { data: cats }] = await Promise.all([
       supabase.from('trabajos_tareas').select('*').order('orden').order('created_at'),
       supabase.from('trabajos_registros').select('*').order('fecha', { ascending: false }),
+      supabase.from('maestros').select('valor').eq('tipo','categoria_trabajo').eq('activo',true).order('orden'),
     ])
     setTareas(t || [])
     setRegistros(r || [])
+    if (cats?.length) setCategorias(cats.map(c => c.valor))
     setLoading(false)
   }
 
@@ -343,6 +345,7 @@ export default function Trabajos() {
           {(showFormTarea || editTarea) && canEdit && (
             <FormTarea
               key={editTarea?.id || 'new'}
+              categorias={categorias}
               tarea={editTarea}
               onSave={async()=>{ setShowFormTarea(false); setEditTarea(null); await fetchAll() }}
               onCancel={()=>{ setShowFormTarea(false); setEditTarea(null) }}

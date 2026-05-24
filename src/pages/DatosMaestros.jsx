@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 const TIPOS = [
@@ -13,7 +13,9 @@ const TIPOS = [
   { id: 'factura_nombre', label: 'Factura a nombre de' },
   { id: 'tipo_pago',      label: 'Tipos de pago' },
   { id: 'marca',          label: 'Marcas de productos' },
-  { id: 'mes_canje',      label: 'Meses de canje' },
+  { id: 'mes_canje',         label: 'Meses de canje' },
+  { id: 'categoria_trabajo', label: 'Categorías de trabajo' },
+
 ]
 
 const CSS = `
