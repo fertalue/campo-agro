@@ -9,6 +9,7 @@ import Lluvias from './pages/Lluvias'
 import Admin from './pages/Admin'
 import DatosMaestros from './pages/DatosMaestros'
 import Ventas from './pages/Ventas'
+import Trabajos from './pages/Trabajos'
 import './styles/theme.css'
 
 const Placeholder = ({ title }) => (
@@ -22,6 +23,7 @@ const PAGES = {
   inicio:       () => <Placeholder title="Panel general" />,
   costos:       Costos,
   ventas:       Ventas,
+  trabajos:     Trabajos,
   viajes:       Viajes,
   lluvias:      Lluvias,
   almacen:      () => <Placeholder title="Almacén" />,
@@ -32,7 +34,7 @@ const PAGES = {
 
 const PAGE_TITLES = {
   inicio: 'Panel general', costos: 'Costos', ventas: 'Ventas / Granos',
-  viajes: 'Viajes al campo', lluvias: 'Precipitaciones',
+  viajes: 'Viajes al campo', trabajos: 'Trabajos', lluvias: 'Precipitaciones',
   almacen: 'Almacén', aplicaciones: 'Aplicaciones', admin: 'Administración', maestros: 'Datos maestros'
 }
 
@@ -40,7 +42,8 @@ const ALL_NAV = [
   { id: 'inicio',        label: 'Inicio' },
   { id: 'costos',        label: 'Costos' },
   { id: 'ventas',        label: 'Ventas' },
-  { id: 'viajes',        label: 'Viajes' },
+  { id: 'viajes',    label: 'Viajes' },
+  { id: 'trabajos',  label: 'Trabajos' },
   { id: 'lluvias',       label: 'Lluvias' },
   { id: 'almacen',       label: 'Almacén' },
   { id: 'aplicaciones',  label: 'Aplicac.' },
@@ -52,6 +55,7 @@ const MOBILE_ICONS = {
   inicio:       <path d="M2 7L9 2L16 7V16H12V11H6V16H2V7Z"/>,
   costos:       <><rect x="2" y="3" width="14" height="13" rx="2"/><path d="M6 3V2M12 3V2M2 8H16M6 12H9M6 14.5H12"/></>,
   ventas:       <><path d="M2 13L6 9L9 12L14 6"/><path d="M11 6H14V9"/></>,
+  trabajos:     <><rect x="2" y="3" width="10" height="12" rx="1.5"/><path d="M8 3V1.5M5 7h6M5 10h4M12 9l2 2 3-3"/></>,
   viajes:       <><circle cx="9" cy="8" r="2.5"/><path d="M9 2C5.7 2 3 4.7 3 8C3 12 9 16 9 16C9 16 15 12 15 8C15 4.7 12.3 2 9 2Z"/></>,
   lluvias:      <><path d="M5 10C5 10 4 9 4 7.5C4 5.6 5.6 4 7.5 4C8.2 4 8.8 4.2 9.3 4.6C9.9 3.6 11 3 12.2 3C14.3 3 16 4.7 16 6.8C16 8 15.4 9 14.5 9.6"/><path d="M7 12L6 14M10 12L9 14M13 12L12 14"/></>,
   almacen:      <><path d="M2 8L9 3L16 8V17H2V8Z"/><path d="M6 17V11H12V17"/></>,
