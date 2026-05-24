@@ -102,12 +102,20 @@ export default function Lluvias() {
   // ── Años disponibles ───────────────────────────────────────────────────────
   const anhos = [...new Set(data.map(d => d.fecha?.slice(0,4)).filter(Boolean))].sort().reverse().map(Number)
 
-  // ── Acumulado mensual del periodo seleccionado ──────────────────────────
-  // Modo campanha: jul->jun (meses 6..11 del a1, 0..5 del a2)
-  // Modo anho: ene->dic
+  // ── Acumulado mensual ─────────────────────────────────────────────────────
+  // Agrupar dataFiltrada directamente por mes (sin re-filtrar por clave)
+  const mmPorMes = {}
+  dataFiltrada.forEach(d => {
+    if (!d.fecha) return
+    const ym = d.fecha.slice(0, 7)  // 'YYYY-MM'
+    mmPorMes[ym] = (mmPorMes[ym] || 0) + mmEfectivo(d)
+  })
+
+  // Orden de meses: campanha = jul->jun, anho = ene->dic
   const [a1camp, a2camp] = (fModo === 'campanha' && fCampanha !== 'todas')
     ? fCampanha.split('-').map(s => parseInt('20'+s))
     : [fAnho, fAnho + 1]
+
   const mesesOrden = (fModo === 'campanha' && fCampanha !== 'todas')
     ? [6,7,8,9,10,11,0,1,2,3,4,5]
     : [0,1,2,3,4,5,6,7,8,9,10,11]
@@ -116,11 +124,9 @@ export default function Lluvias() {
     const anhoMes = (fModo === 'campanha' && fCampanha !== 'todas')
       ? (mesIdx >= 6 ? a1camp : a2camp)
       : fAnho
-    const mesStr = String(mesIdx + 1).padStart(2, '0')
-    const key = anhoMes + '-' + mesStr
-    const filas = dataFiltrada.filter(d => d.fecha && d.fecha.startsWith(key))
-    const mmMes = filas.reduce((a, b) => a + mmEfectivo(b), 0)
-    return { mes: mesIdx, label: MESES[mesIdx], key, mm: mmMes, n: filas.length }
+    const key = anhoMes + '-' + String(mesIdx + 1).padStart(2, '0')
+    const mm = mmPorMes[key] || 0
+    return { mes: mesIdx, label: MESES[mesIdx], key, mm }
   })
 
   const mesActual = fModo === 'anho' && fAnho === new Date().getFullYear()
@@ -128,6 +134,8 @@ export default function Lluvias() {
     : 11
 
   const acumVisible = fModo === 'anho'
+    ? acumMensual.slice(0, mesActual + 1)
+    : acumMensual
     ? acumMensual.slice(0, mesActual + 1)
     : acumMensual
 
