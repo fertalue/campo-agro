@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 
 const TODOS_MODULOS = [
@@ -9,7 +10,6 @@ const TODOS_MODULOS = [
   { id: 'lluvias',       label: 'Precipitaciones' },
   { id: 'almacen',       label: 'Almacén' },
   { id: 'aplicaciones',  label: 'Aplicaciones' },
-  { id: 'contratos',     label: 'Contratos' },
   { id: 'admin',         label: 'Administración' },
   { id: 'maestros',      label: 'Datos maestros' },
 ]
@@ -55,6 +55,7 @@ function getNivel(usuario, modId) {
 }
 
 export default function Admin() {
+  const { isAdmin } = useAuth()
   const [usuarios, setUsuarios] = useState([])
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(null)
@@ -124,6 +125,13 @@ export default function Admin() {
     setShowAdd(false)
     await fetchUsuarios()
   }
+
+  if (!isAdmin) return (
+    <div style={{ padding:40, textAlign:'center', color:'var(--arcilla)', fontSize:14 }}>
+      <div style={{ fontSize:32, marginBottom:12 }}>🔒</div>
+      Solo los administradores pueden gestionar usuarios y permisos.
+    </div>
+  )
 
   return (
     <div>

@@ -27,7 +27,8 @@ function fmtFecha(f) {
 }
 
 export default function Lluvias() {
-  const { user } = useAuth()
+  const { user, puedeEditar, isAdmin } = useAuth()
+  const canEdit = isAdmin || puedeEditar('lluvias')
   const quienIngreso = user?.user_metadata?.nombre || user?.email || ''
 
   const [data, setData]         = useState([])
@@ -197,13 +198,12 @@ export default function Lluvias() {
             {data.reduce((a,b)=>a+(b.mm||0),0).toFixed(0)} mm histórico · {data.length} eventos · {campoLabel}
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(v=>!v)}>
-          {showForm ? 'Cancelar' : '+ Registrar'}
-        </button>
+        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(v=>!v)}>
+          {showForm ? 'Cancelar' : '+ Registrar'}</button>}
       </div>
 
       {/* Formulario */}
-      {showForm && (
+      {showForm && canEdit && (
         <div className="card mb-3" style={{ background:'#F0F6FA', borderColor:'var(--niebla)' }}>
           <h3 style={{ marginBottom:14 }}>Nuevo registro</h3>
           <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -621,10 +621,10 @@ export default function Lluvias() {
                       <td style={{padding:'8px 10px',color:'var(--text-muted)',fontSize:11,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.observaciones||'—'}</td>
                       <td style={{padding:'8px 10px',color:'var(--text-muted)',fontSize:11}}>{d.quien_ingreso||'—'}</td>
                       <td style={{padding:'8px 10px'}}>
-                        <button onClick={()=>setEditando({...d})}
+                        {canEdit && <button onClick={()=>setEditando({...d})}
                           style={{background:'transparent',border:'1px solid var(--border)',borderRadius:5,padding:'3px 8px',fontSize:11,cursor:'pointer',color:'var(--arcilla)'}}>
                           Editar
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   )

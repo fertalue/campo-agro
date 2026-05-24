@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { db } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -12,7 +12,8 @@ const chipClass = (cat) => ({
 }[cat] || 'chip-muted')
 
 export default function Viajes() {
-  const { role, displayName } = useAuth()
+  const { role, displayName, puedeEditar, isAdmin } = useAuth()
+  const canEdit = isAdmin || puedeEditar('viajes')
   const [viajes, setViajes]   = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -59,9 +60,9 @@ export default function Viajes() {
             {viajes.length} visitas registradas
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(!showForm)}>
+        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancelar' : '+ Registrar visita'}
-        </button>
+        </button>}
       </div>
 
       {/* Stats */}
@@ -87,7 +88,7 @@ export default function Viajes() {
       </div>
 
       {/* Form */}
-      {showForm && (
+      {showForm && canEdit && (
         <div className="card mb-3" style={{ background: '#F9F6EE', borderColor: 'var(--paja)' }}>
           <h3 style={{ marginBottom: 14 }}>Nueva visita</h3>
           <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
