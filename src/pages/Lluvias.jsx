@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -165,16 +165,15 @@ export default function Lluvias() {
   // Desde jul 2023. Meses en orden jul->jun de campaña
   const mesesHistorico = [6,7,8,9,10,11,0,1,2,3,4,5]
   const historicoPorMes = mesesHistorico.map(mesIdx => {
-    // Juntar todos los valores de ese mes en todas las campañas disponibles
-    const vals = CAMPANHAS_LL.flatMap(c => {
+    // Siempre incluir todas las campanas — 0 si no hubo lluvia ese mes
+    const vals = CAMPANHAS_LL.map(c => {
       const [y1, y2] = c.split('-').map(s => parseInt('20'+s))
       const anhoMes = mesIdx >= 6 ? y1 : y2
       const key = anhoMes + '-' + String(mesIdx+1).padStart(2,'0')
-      const filas = dataFiltradaCampo.filter(d => d.fecha?.startsWith(key))
-      const total = filas.reduce((a,b) => a + mmEfectivo(b), 0)
-      return total > 0 || filas.length > 0 ? [total] : []
+      const filas = dataFiltradaCampo.filter(d => d.fecha && d.fecha.startsWith(key))
+      return filas.reduce((a,b) => a + mmEfectivo(b), 0)
     })
-    const media = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : 0
+    const media = vals.reduce((a,b)=>a+b,0) / CAMPANHAS_LL.length
     return { mes: mesIdx, label: MESES[mesIdx], media, vals }
   })
   const maxHistorico = Math.max(...historicoPorMes.map(m => m.media), 1)
