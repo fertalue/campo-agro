@@ -209,7 +209,7 @@ export default function Viajes() {
                   <span style={{ fontSize:11, fontWeight:600, color:'var(--tierra)' }}>{total}</span>
                 </div>
                 <div style={{ height:6, background:'#E8D5A3', borderRadius:3, overflow:'hidden', marginBottom:3 }}>
-                  <div style={{ height:6, background: fCategoria===cat?'var(--pasto)':'#7A9EAD', borderRadius:3, width:${total/maxCat*100}% }}/>
+                  <div style={{ height:6, background: fCategoria===cat?'var(--pasto)':'#7A9EAD', borderRadius:3, width:(total/maxCat*100)+'%' }}/>
                 </div>
                 <div style={{ display:'flex', gap:6, fontSize:10, color:'var(--text-muted)' }}>
                   {fer > 0 && <span style={{color:'#2E4F26'}}>Fer: {fer}</span>}
