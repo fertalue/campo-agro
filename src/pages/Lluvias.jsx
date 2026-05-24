@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { db } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -102,13 +102,25 @@ export default function Lluvias() {
   // ── Años disponibles ───────────────────────────────────────────────────────
   const anhos = [...new Set(data.map(d => d.fecha?.slice(0,4)).filter(Boolean))].sort().reverse().map(Number)
 
-  // ── Acumulado mensual del periodo seleccionado ─────────────────────────────
-  const acumMensual = Array.from({ length: 12 }, (_, i) => {
-    const mes = String(i + 1).padStart(2, '0')
-    const key = `${fAnho}-${mes}`
-    const filas = dataFiltrada.filter(d => d.fecha?.startsWith(key))
+  // ── Acumulado mensual del periodo seleccionado ──────────────────────────
+  // Modo campanha: jul->jun (meses 6..11 del a1, 0..5 del a2)
+  // Modo anho: ene->dic
+  const [a1camp, a2camp] = (fModo === 'campanha' && fCampanha !== 'todas')
+    ? fCampanha.split('-').map(s => parseInt('20'+s))
+    : [fAnho, fAnho + 1]
+  const mesesOrden = (fModo === 'campanha' && fCampanha !== 'todas')
+    ? [6,7,8,9,10,11,0,1,2,3,4,5]
+    : [0,1,2,3,4,5,6,7,8,9,10,11]
+
+  const acumMensual = mesesOrden.map(mesIdx => {
+    const anhoMes = (fModo === 'campanha' && fCampanha !== 'todas')
+      ? (mesIdx >= 6 ? a1camp : a2camp)
+      : fAnho
+    const mesStr = String(mesIdx + 1).padStart(2, '0')
+    const key = anhoMes + '-' + mesStr
+    const filas = dataFiltrada.filter(d => d.fecha && d.fecha.startsWith(key))
     const mmMes = filas.reduce((a, b) => a + mmEfectivo(b), 0)
-    return { mes: i, label: MESES[i], key, mm: mmMes, n: filas.length }
+    return { mes: mesIdx, label: MESES[mesIdx], key, mm: mmMes, n: filas.length }
   })
 
   const mesActual = fModo === 'anho' && fAnho === new Date().getFullYear()
