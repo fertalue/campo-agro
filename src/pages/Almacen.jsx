@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -18,23 +18,12 @@ function fmtNum(v, dec=0) {
 // ── Buscar EIQ via IA + web search ───────────────────────────────────────────
 async function buscarEiqIA(producto, marca) {
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/buscar-eiq', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{
-          role: 'user',
-          content: `Search the Cornell University EIQ database or pesticide safety databases for the EIQ (Environmental Impact Quotient) value of the active ingredient "${producto}"${marca ? ' (brand: ' + marca + ')' : ''}. Respond ONLY with JSON: {"eiq": number_or_null, "fuente": "source reference"}. Use null if not found.`
-        }]
-      })
+      body: JSON.stringify({ producto, marca })
     })
-    const data = await res.json()
-    const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
-    const match = txt.match(/\{"eiq"[^}]+\}/)
-    if (match) return JSON.parse(match[0])
+    return await res.json()
   } catch(e) {}
   return null
 }
