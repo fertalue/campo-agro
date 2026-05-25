@@ -702,6 +702,23 @@ function FormCosto({ onSave, onCancel, dolar }) {
   )
 }
 // ── Componente principal ─────────────────────────────────────────────────────
+function AddGastoRec({ onAdd }) {
+  const [nVal, setNVal] = useState('')
+  const [nTipo, setNTipo] = useState('gasto_rec_producto')
+  return (
+    <div style={{ display: 'flex', gap: 4, marginTop: 4, borderTop: '1px solid #D8C9A8', paddingTop: 8 }}>
+      <input value={nVal} onChange={e => setNVal(e.target.value)} placeholder="Ej: Nafta"
+        style={{ flex: 1, padding: '4px 6px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}/>
+      <select value={nTipo} onChange={e => setNTipo(e.target.value)}
+        style={{ padding: '4px 5px', border: '1px solid #D8C9A8', borderRadius: 5, fontSize: 11, fontFamily: 'inherit', background: '#FDFAF4' }}>
+        <option value="gasto_rec_producto">producto</option>
+        <option value="gasto_rec_proveedor">proveedor</option>
+      </select>
+      <button onClick={() => { if (!nVal.trim()) return; onAdd(nVal, nTipo); setNVal('') }}
+        style={{ padding: '4px 8px', background: 'var(--pasto)', color: '#F5F0E4', border: 'none', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+    </div>
+  )
+}
 export default function Costos({ dolares }) {
   const [costos, setCostos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -719,8 +736,9 @@ export default function Costos({ dolares }) {
 
   const [fCampanha, setFCampanha] = useState([])
   const [fMes, setFMes] = useState([])
-  const [fChCamp, setFChCamp]     = useState('')
-  const [fChCentro, setFChCentro] = useState('')
+  const [fChCamp,   setFChCamp]   = useState([])
+  const [fChCentro, setFChCentro] = useState([])
+  const [gastosRec, setGastosRec] = useState([])
   const [fNombre, setFNombre] = useState([])
   const [fCentro, setFCentro] = useState([])
   const [fProv, setFProv] = useState([])
@@ -730,6 +748,7 @@ export default function Costos({ dolares }) {
 
   useEffect(() => { fetchAll() }, [])
   async function fetchAll() {
+    supabase.from('maestros').select('id,tipo,valor').in('tipo',['gasto_rec_producto','gasto_rec_proveedor']).eq('activo',true).order('orden').then(({data}) => setGastosRec(data||[]))
     setLoading(true)
     const { data } = await db.costos.list()
     setCostos(data || [])
@@ -1353,117 +1372,142 @@ export default function Costos({ dolares }) {
 
       {/* ─────────── CHEQUEOS ─────────── */}
       {tab === 'chequeos' && (() => {
-        // ── A: Gastos recurrentes ──────────────────────────────────────────
-        const RECURRENTES = ['Internet', 'Honorarios Gise', 'Netlify']
 
-        // Obtener todos los meses con al menos un costo
-        const todosLosMeses = [...new Set(costos.map(c => c.fecha?.slice(0,7)).filter(Boolean))].sort()
-        // Desde el primer mes en que aparece cada recurrente
-        const chequeoRec = RECURRENTES.map(prod => {
-          const registros = costos.filter(c => c.producto_servicio === prod)
-          if (registros.length === 0) return { prod, meses: [], faltantes: [], presentes: [] }
+        // ── A: Gastos recurrentes (lista editable desde maestros) ────────────
+        const chequeoRec = gastosRec.map(({ id, valor, tipo }) => {
+          const esProd = tipo === 'gasto_rec_producto'
+          const registros = costos.filter(c =>
+            esProd ? c.producto_servicio === valor : c.proveedor === valor
+          )
+          if (registros.length === 0) return { id, valor, tipo, esProd, rango: [], faltantes: [], presentes: new Set() }
           const primerMes = registros.map(c => c.fecha?.slice(0,7)).filter(Boolean).sort()[0]
           const mesHoy    = new Date().toISOString().slice(0,7)
-          // Generar lista de meses desde primerMes hasta hoy
           const rango = []
           let cur = new Date(primerMes + '-01T12:00:00')
-          const fin = new Date(mesHoy + '-01T12:00:00')
+          const fin = new Date(mesHoy   + '-01T12:00:00')
           while (cur <= fin) {
             rango.push(cur.toISOString().slice(0,7))
             cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
           }
-          const presentes  = new Set(registros.map(c => c.fecha?.slice(0,7)).filter(Boolean))
-          const faltantes  = rango.filter(m => !presentes.has(m))
-          return { prod, rango, faltantes, presentes }
+          const presentes = new Set(registros.map(c => c.fecha?.slice(0,7)).filter(Boolean))
+          const faltantes = rango.filter(m => !presentes.has(m))
+          return { id, valor, tipo, esProd, rango, faltantes, presentes }
         })
 
-        // ── B: Por proveedor Fer vs Leo ────────────────────────────────────
+        // ── B: Fer vs Leo ────────────────────────────────────────────────────
         const CAMPANHAS_OPT = [...new Set(costos.map(c => c.campanha).filter(Boolean))].sort().reverse()
         const CENTROS_OPT   = [...new Set(costos.map(c => c.centro_costos).filter(Boolean))].sort()
 
-        // estados locales via IIFE no van — usamos props del padre declaradas antes del return
-        // Los estados fChCamp y fChCentro están declarados en el componente padre
-
         const costosFiltB = costos.filter(c => {
-          if (fChCamp   && c.campanha     !== fChCamp)   return false
-          if (fChCentro && c.centro_costos !== fChCentro) return false
+          if (fChCamp.length   > 0 && !fChCamp.includes(c.campanha))      return false
+          if (fChCentro.length > 0 && !fChCentro.includes(c.centro_costos)) return false
           return true
         })
 
-        // Agrupar por proveedor: total Fer, total Leo, total general
         const porProveedor = {}
         costosFiltB.forEach(c => {
-          const prov = c.proveedor || 'Sin proveedor'
+          const prov  = c.proveedor || 'Sin proveedor'
           if (!porProveedor[prov]) porProveedor[prov] = { fer: 0, leo: 0, otro: 0, total: 0, n: 0 }
           const monto = c.precio_total_usd || c.monto_usd || 0
-          const nombre = c.factura_nombre
-          if (nombre === 'Fer') porProveedor[prov].fer += monto
-          else if (nombre === 'Leo') porProveedor[prov].leo += monto
+          const nom   = c.factura_nombre
+          if (nom === 'Fer') porProveedor[prov].fer  += monto
+          else if (nom === 'Leo') porProveedor[prov].leo  += monto
           else porProveedor[prov].otro += monto
           porProveedor[prov].total += monto
-          porProveedor[prov].n += 1
+          porProveedor[prov].n     += 1
         })
-
-        const provRows = Object.entries(porProveedor)
-          .map(([prov, d]) => ({ prov, ...d }))
-          .filter(d => d.total > 0)
-          .sort((a, b) => b.total - a.total)
-
-        const totalFer  = provRows.reduce((a, r) => a + r.fer, 0)
-        const totalLeo  = provRows.reduce((a, r) => a + r.leo, 0)
+        const provRows  = Object.entries(porProveedor).map(([prov, d]) => ({ prov, ...d })).filter(d => d.total > 0).sort((a, b) => b.total - a.total)
+        const totalFer  = provRows.reduce((a, r) => a + r.fer,  0)
+        const totalLeo  = provRows.reduce((a, r) => a + r.leo,  0)
         const totalOtro = provRows.reduce((a, r) => a + r.otro, 0)
         const grandTotal = provRows.reduce((a, r) => a + r.total, 0)
         const maxTotal  = Math.max(...provRows.map(r => r.total), 1)
-
         const fmt = v => v > 0 ? 'U$S ' + v.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'
+
+        // ── helpers edicion recurrentes ─────────────────────────────────────
+        async function addRec(valor, tipo) {
+          if (!valor.trim()) return
+          await supabase.from('maestros').insert({ tipo, valor: valor.trim(), activo: true, orden: 99 })
+          await fetchAll()
+        }
+        async function removeRec(id) {
+          if (!confirm('¿Quitar este gasto de la lista?')) return
+          await supabase.from('maestros').delete().eq('id', id)
+          await fetchAll()
+        }
 
         return (
           <div>
             {/* ── Gastos recurrentes ── */}
             <div className="card mb-3">
-              <h3 style={{ marginBottom: 4 }}>Gastos recurrentes</h3>
-              <p style={{ fontSize: 11, color: 'var(--arcilla)', marginBottom: 16 }}>
-                Verificación de que no falte ningún mes desde el primer registro
-              </p>
-              {chequeoRec.map(({ prod, rango, faltantes, presentes }) => {
-                const ok = faltantes.length === 0
-                return (
-                  <div key={prod} style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, border: '1px solid', borderColor: ok ? '#9DC87A' : '#F0997B', background: ok ? '#F4FAF0' : '#FEF3EF' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 16 }}>{ok ? '✅' : '⚠️'}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: ok ? '#2E4F26' : '#993C1D' }}>{prod}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{presentes.length} meses registrados</span>
-                      </div>
-                      {ok
-                        ? <span style={{ fontSize: 11, fontWeight: 600, color: '#2E4F26', background: '#EBF4E8', borderRadius: 20, padding: '3px 10px' }}>Al día ✓</span>
-                        : <span style={{ fontSize: 11, fontWeight: 600, color: '#993C1D', background: '#FAECE7', borderRadius: 20, padding: '3px 10px' }}>{faltantes.length} mes{faltantes.length > 1 ? 'es' : ''} faltante{faltantes.length > 1 ? 's' : ''}</span>
-                      }
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>Gastos recurrentes</h3>
+                  <p style={{ fontSize: 11, color: 'var(--arcilla)', marginTop: 4 }}>Verificación mes a mes desde el primer registro</p>
+                </div>
+                {/* Panel edición lista */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 260, background: '#F5F0E8', border: '1px solid #D8C9A8', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lista a controlar</div>
+                  {gastosRec.map(g => (
+                    <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ flex: 1, fontSize: 12, color: 'var(--tierra)' }}>{g.valor}</span>
+                      <span style={{ fontSize: 10, background: g.tipo === 'gasto_rec_producto' ? '#EBF4E8' : '#E4F0F4', color: g.tipo === 'gasto_rec_producto' ? '#2E4F26' : '#2C5A6A', borderRadius: 20, padding: '1px 6px' }}>
+                        {g.tipo === 'gasto_rec_producto' ? 'producto' : 'proveedor'}
+                      </span>
+                      <button onClick={() => removeRec(g.id)}
+                        style={{ background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 4, padding: '2px 6px', fontSize: 11, cursor: 'pointer', color: '#993C1D' }}>✕</button>
                     </div>
-                    {!ok && (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                        {faltantes.map(m => (
-                          <span key={m} style={{ fontSize: 11, background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 6, padding: '2px 8px', color: '#993C1D' }}>
-                            {new Date(m + '-01T12:00:00').toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })}
+                  ))}
+                  {/* Agregar nuevo */}
+                  <AddGastoRec onAdd={addRec} />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {chequeoRec.map(({ id, valor, esProd, rango, faltantes, presentes }) => {
+                  const ok = faltantes.length === 0
+                  return (
+                    <div key={id} style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid', borderColor: ok ? '#9DC87A' : '#F0997B', background: ok ? '#F4FAF0' : '#FEF3EF' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 16 }}>{ok ? '✅' : '⚠️'}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: ok ? '#2E4F26' : '#993C1D' }}>{valor}</span>
+                          <span style={{ fontSize: 10, background: esProd ? '#EBF4E8' : '#E4F0F4', color: esProd ? '#2E4F26' : '#2C5A6A', borderRadius: 20, padding: '1px 6px' }}>
+                            {esProd ? 'producto' : 'proveedor'}
                           </span>
-                        ))}
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{presentes.size} meses registrados</span>
+                        </div>
+                        {ok
+                          ? <span style={{ fontSize: 11, fontWeight: 600, color: '#2E4F26', background: '#EBF4E8', borderRadius: 20, padding: '3px 10px' }}>Al día ✓</span>
+                          : <span style={{ fontSize: 11, fontWeight: 600, color: '#993C1D', background: '#FAECE7', borderRadius: 20, padding: '3px 10px' }}>{faltantes.length} mes{faltantes.length > 1 ? 'es' : ''} faltante{faltantes.length > 1 ? 's' : ''}</span>
+                        }
                       </div>
-                    )}
-                    {/* Grilla de meses */}
-                    {rango && rango.length > 0 && (
-                      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 8 }}>
-                        {rango.map(m => {
-                          const tiene = presentes instanceof Set ? presentes.has(m) : presentes.includes(m)
-                          return (
+                      {!ok && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                          {faltantes.map(m => (
+                            <span key={m} style={{ fontSize: 11, background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 6, padding: '2px 8px', color: '#993C1D' }}>
+                              {new Date(m + '-01T12:00:00').toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {rango.length > 0 && (
+                        <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                          {rango.map(m => (
                             <div key={m} title={new Date(m + '-01T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
-                              style={{ width: 28, height: 14, borderRadius: 3, background: tiene ? '#4A7C3F' : '#F0997B', opacity: tiene ? 0.85 : 1 }}/>
-                          )
-                        })}
-                      </div>
-                    )}
+                              style={{ width: 22, height: 12, borderRadius: 2, background: presentes.has(m) ? '#4A7C3F' : '#F0997B', opacity: presentes.has(m) ? 0.85 : 1 }}/>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {chequeoRec.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: 24, fontSize: 13, color: 'var(--arcilla)' }}>
+                    Agregá gastos a la lista para controlarlos
                   </div>
-                )
-              })}
+                )}
+              </div>
             </div>
 
             {/* ── Fer vs Leo por proveedor ── */}
@@ -1474,25 +1518,51 @@ export default function Costos({ dolares }) {
                   <p style={{ fontSize: 11, color: 'var(--arcilla)' }}>Comparación por factura a nombre</p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <select value={fChCamp} onChange={e => setFChCamp(e.target.value)}
-                    style={{ padding: '6px 10px', border: '1px solid #D8C9A8', borderRadius: 6, fontSize: 12, background: '#F5F0E4', fontFamily: 'inherit' }}>
-                    <option value="">Todas las campañas</option>
-                    {CAMPANHAS_OPT.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <select value={fChCentro} onChange={e => setFChCentro(e.target.value)}
-                    style={{ padding: '6px 10px', border: '1px solid #D8C9A8', borderRadius: 6, fontSize: 12, background: '#F5F0E4', fontFamily: 'inherit' }}>
-                    <option value="">Todos los centros</option>
-                    {CENTROS_OPT.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Campaña</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {CAMPANHAS_OPT.map(c => (
+                        <button key={c} onClick={() => setFChCamp(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}
+                          style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit',
+                            background: fChCamp.includes(c) ? '#4A7C3F' : 'transparent',
+                            color: fChCamp.includes(c) ? '#F5F0E4' : 'var(--arcilla)',
+                            borderColor: fChCamp.includes(c) ? '#4A7C3F' : '#D8C9A8' }}>
+                          {c}
+                        </button>
+                      ))}
+                      {fChCamp.length > 0 && (
+                        <button onClick={() => setFChCamp([])}
+                          style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid #D8C9A8', background: 'transparent', color: 'var(--arcilla)', fontFamily: 'inherit' }}>✕</button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Centro de costo</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 500 }}>
+                      {CENTROS_OPT.map(c => (
+                        <button key={c} onClick={() => setFChCentro(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}
+                          style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                            background: fChCentro.includes(c) ? '#7A9EAD' : 'transparent',
+                            color: fChCentro.includes(c) ? '#fff' : 'var(--arcilla)',
+                            borderColor: fChCentro.includes(c) ? '#7A9EAD' : '#D8C9A8' }}>
+                          {c}
+                        </button>
+                      ))}
+                      {fChCentro.length > 0 && (
+                        <button onClick={() => setFChCentro([])}
+                          style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid #D8C9A8', background: 'transparent', color: 'var(--arcilla)', fontFamily: 'inherit' }}>✕</button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Totales */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 10, marginBottom: 16 }}>
                 {[
-                  ['Fer', fmt(totalFer), (totalFer / (grandTotal || 1) * 100).toFixed(0) + '%', '#4A7C3F', '#EBF4E8'],
-                  ['Leo', fmt(totalLeo), (totalLeo / (grandTotal || 1) * 100).toFixed(0) + '%', '#C8A96E', '#FAF5EC'],
-                  ['Total', fmt(grandTotal), provRows.length + ' proveedores', '#2C5A6A', '#E4F0F4'],
+                  ['Fer',   fmt(totalFer),   (totalFer / (grandTotal || 1) * 100).toFixed(0) + '%', '#4A7C3F', '#EBF4E8'],
+                  ['Leo',   fmt(totalLeo),   (totalLeo / (grandTotal || 1) * 100).toFixed(0) + '%', '#C8A96E', '#FAF5EC'],
+                  ['Total', fmt(grandTotal), provRows.length + ' proveedores',                       '#2C5A6A', '#E4F0F4'],
                 ].map(([lbl, val, sub, col, bg]) => (
                   <div key={lbl} style={{ background: bg, border: '1px solid ' + col + '44', borderRadius: 10, padding: '12px 14px' }}>
                     <div style={{ fontSize: 11, color: col, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{lbl}</div>
@@ -1502,17 +1572,17 @@ export default function Costos({ dolares }) {
                 ))}
               </div>
 
-              {/* Tabla por proveedor */}
+              {/* Tabla */}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: '#EDE0C8' }}>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Proveedor</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left',  fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Proveedor</th>
                       <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#4A7C3F', textTransform: 'uppercase' }}>Fer</th>
                       <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#C8A96E', textTransform: 'uppercase' }}>Leo</th>
                       <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Otro</th>
                       <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#2C5A6A', textTransform: 'uppercase' }}>Total</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Distribución</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left',  fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Distribución</th>
                     </tr>
                   </thead>
                   <tbody>
