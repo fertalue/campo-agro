@@ -1374,7 +1374,7 @@ export default function Costos({ dolares }) {
           }
           const presentes  = new Set(registros.map(c => c.fecha?.slice(0,7)).filter(Boolean))
           const faltantes  = rango.filter(m => !presentes.has(m))
-          return { prod, rango, faltantes, presentes: [...presentes].sort() }
+          return { prod, rango, faltantes, presentes }
         })
 
         // ── B: Por proveedor Fer vs Leo ────────────────────────────────────
@@ -1453,7 +1453,7 @@ export default function Costos({ dolares }) {
                     {rango && rango.length > 0 && (
                       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 8 }}>
                         {rango.map(m => {
-                          const tiene = presentes.has(m)
+                          const tiene = presentes instanceof Set ? presentes.has(m) : presentes.includes(m)
                           return (
                             <div key={m} title={new Date(m + '-01T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
                               style={{ width: 28, height: 14, borderRadius: 3, background: tiene ? '#4A7C3F' : '#F0997B', opacity: tiene ? 0.85 : 1 }}/>
