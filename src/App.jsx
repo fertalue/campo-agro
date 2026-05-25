@@ -10,6 +10,8 @@ import Admin from './pages/Admin'
 import DatosMaestros from './pages/DatosMaestros'
 import Ventas from './pages/Ventas'
 import Trabajos from './pages/Trabajos'
+import Almacen from './pages/Almacen'
+import Aplicaciones from './pages/Aplicaciones'
 import './styles/theme.css'
 
 const Placeholder = ({ title }) => (
@@ -23,7 +25,9 @@ const PAGES = {
   inicio:       () => <Placeholder title="Panel general" />,
   costos:       Costos,
   ventas:       Ventas,
-  trabajos:     Trabajos,
+  trabajos:      Trabajos,
+  almacen:       Almacen,
+  aplicaciones:  Aplicaciones,
   viajes:       Viajes,
   lluvias:      Lluvias,
   almacen:      () => <Placeholder title="Almacén" />,
@@ -43,7 +47,9 @@ const ALL_NAV = [
   { id: 'costos',        label: 'Costos' },
   { id: 'ventas',        label: 'Ventas' },
   { id: 'viajes',    label: 'Viajes' },
-  { id: 'trabajos',  label: 'Trabajos' },
+  { id: 'trabajos',      label: 'Trabajos' },
+  { id: 'almacen',       label: 'Almacén' },
+  { id: 'aplicaciones',  label: 'Aplicaciones' },
   { id: 'lluvias',       label: 'Lluvias' },
   { id: 'almacen',       label: 'Almacén' },
   { id: 'aplicaciones',  label: 'Aplicac.' },

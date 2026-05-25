@@ -9,6 +9,8 @@ const NAV_ITEMS = [
   ]},
   { section: 'Producción', items: [
     { id: 'trabajos',     label: 'Trabajos' },
+    { id: 'almacen',       label: 'Almacén' },
+    { id: 'aplicaciones',  label: 'Aplicaciones' },
     { id: 'lluvias',      label: 'Precipitaciones' },
     { id: 'almacen',      label: 'Almacén' },
     { id: 'aplicaciones', label: 'Aplicaciones' },
@@ -24,6 +26,8 @@ const ICONS = {
   costos: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M5 3V2M11 3V2M2 7H14M5 10H8M5 12.5H10"/></svg>,
   ventas: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12L6 8L9 11L14 5"/><path d="M11 5H14V8"/></svg>,
   viajes: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="7" r="2.5"/><path d="M8 2C5.2 2 3 4.2 3 7C3 10.5 8 14 8 14C8 14 13 10.5 13 7C13 4.2 10.8 2 8 2Z"/></svg>,
+  almacen: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 11V6l6-4 6 4v5"/><rect x="5" y="8" width="6" height="8"/><path d="M5 11h6"/></svg>,
+  aplicaciones: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 13h10M3 5l5-3 5 3M4 5v8M12 5v8M7 8h2"/></svg>,
   trabajos: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="9" height="12" rx="1.5"/><path d="M7 2V1M4.5 6h5M4.5 8.5h3.5M11 9l2 2 2.5-2.5"/></svg>,
   lluvias: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9C4 9 3 8 3 6.5C3 4.6 4.6 3 6.5 3C7.2 3 7.8 3.2 8.3 3.6C8.9 2.6 10 2 11.2 2C13.3 2 15 3.7 15 5.8C15 7 14.4 8 13.5 8.6"/><path d="M6 11L5 13M9 11L8 13M12 11L11 13"/></svg>,
   almacen: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 7L8 3L14 7V14H2V7Z"/><path d="M6 14V9H10V14"/></svg>,
