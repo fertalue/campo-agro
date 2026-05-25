@@ -1404,15 +1404,23 @@ export default function Costos({ dolares }) {
           return true
         })
 
+        // Usar la misma funcion gm del resumen (respeta ivaMode y campo correcto)
+        const gmB = c => ivaMode === 'sin'
+          ? (c.precio_total_sin_iva || c.monto_usd || 0)
+          : ivaMode === 'con'
+          ? (c.precio_total_con_iva || c.monto_usd || 0)
+          : (c.precio_total_usd || c.precio_total_con_iva || c.monto_usd || 0)
+
         const porProveedor = {}
         costosFiltB.forEach(c => {
           const prov  = c.proveedor || 'Sin proveedor'
           if (!porProveedor[prov]) porProveedor[prov] = { fer: 0, leo: 0, otro: 0, total: 0, n: 0 }
-          const monto = c.precio_total_usd || c.monto_usd || 0
+          const monto = gmB(c)
           const nom   = c.factura_nombre
-          if (nom === 'Fer') porProveedor[prov].fer  += monto
-          else if (nom === 'Leo') porProveedor[prov].leo  += monto
-          else porProveedor[prov].otro += monto
+          // 'ambos' se divide 50/50 igual que en el resumen
+          if (nom === 'Fer' || nom === 'ambos') porProveedor[prov].fer  += monto / (nom === 'ambos' ? 2 : 1)
+          if (nom === 'Leo' || nom === 'ambos') porProveedor[prov].leo  += monto / (nom === 'ambos' ? 2 : 1)
+          if (nom !== 'Fer' && nom !== 'Leo' && nom !== 'ambos') porProveedor[prov].otro += monto
           porProveedor[prov].total += monto
           porProveedor[prov].n     += 1
         })
