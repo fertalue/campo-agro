@@ -127,7 +127,7 @@ function FilaCatalogo({ prod, onSave, onDelete }) {
           style={{ ...si, flex:1, minWidth:100, fontSize:11 }} placeholder="Fuente del EIQ"/>
         <button type="button" onClick={handleBuscarEiq} disabled={buscandoEiq}
           style={{ padding:'5px 9px', background:'#E4F0F4', border:'1px solid #7A9EAD', borderRadius:6, fontSize:11, cursor:'pointer', color:'#2C5A6A', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-          {buscandoEiq ? '⏳' : '🌐 Buscar EIQ'}
+          {buscandoEiq ? '⏳' : '🤖 Buscar EIQ'}
         </button>
       </div>
 
