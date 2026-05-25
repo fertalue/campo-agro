@@ -33,9 +33,9 @@ async function buscarPrecioEnCostos(producto) {
   const palabras = producto.toLowerCase().split(/[\s,+]+/).filter(p => p.length > 3)
   const { data } = await supabase
     .from('costos')
-    .select('id,fecha,precio_total_sin_iva,precio_total_usd,proveedor,producto_servicio')
+    .select('id,fecha,precio_unitario_sin_iva_usd,precio_total_sin_iva,cantidad,unidad,unidad_base,precio_por_unidad_base,proveedor,producto_servicio')
     .ilike('producto_servicio', `%${palabras[0]}%`)
-    .not('precio_total_sin_iva', 'is', null)
+    .not('precio_unitario_sin_iva_usd', 'is', null)
     .order('fecha', { ascending: false })
     .limit(6)
   return data || []
@@ -144,10 +144,17 @@ function FilaCatalogo({ prod, onSave, onDelete }) {
                 <span style={{ color:'var(--text-muted)', flexShrink:0 }}>{c.fecha}</span>
                 <span style={{ flex:1, color:'var(--tierra)', fontWeight:500 }}>{c.producto_servicio}</span>
                 <span style={{ color:'var(--arcilla)', flexShrink:0 }}>{c.proveedor}</span>
-                <span style={{ fontWeight:600, color:'#2E4F26', flexShrink:0 }}>U$S {fmtNum(c.precio_total_sin_iva,2)}</span>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  {c.precio_unitario_sin_iva_usd
+                    ? <div style={{ fontWeight:700, color:'#2E4F26' }}>U$S {fmtNum(c.precio_unitario_sin_iva_usd, 3)}<span style={{ fontWeight:400, color:'var(--text-muted)' }}>/{c.unidad_base||c.unidad||'u'}</span></div>
+                    : c.precio_por_unidad_base
+                      ? <div style={{ fontWeight:700, color:'#2E4F26' }}>U$S {fmtNum(c.precio_por_unidad_base, 3)}<span style={{ fontWeight:400, color:'var(--text-muted)' }}>/{c.unidad_base||'u'}</span></div>
+                      : <span style={{ color:'var(--text-muted)' }}>sin precio unit.</span>
+                  }
+                  {c.cantidad && <div style={{ fontSize:10, color:'var(--text-muted)' }}>{fmtNum(c.cantidad,0)} {c.unidad}</div>}
+                </div>
               </div>
             ))}
-            <div style={{ fontSize:10, color:'var(--text-muted)' }}>Dividí el total por la cantidad para obtener precio/unidad</div>
           </div>
         )}
         {showPrecios && preciosSug.length === 0 && (
