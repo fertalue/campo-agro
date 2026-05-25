@@ -25,13 +25,11 @@ const PAGES = {
   inicio:       () => <Placeholder title="Panel general" />,
   costos:       Costos,
   ventas:       Ventas,
-  trabajos:      Trabajos,
-  almacen:       Almacen,
-  aplicaciones:  Aplicaciones,
+  trabajos:     Trabajos,
+  almacen:      Almacen,
+  aplicaciones: Aplicaciones,
   viajes:       Viajes,
   lluvias:      Lluvias,
-  almacen:      () => <Placeholder title="Almacén" />,
-  aplicaciones: () => <Placeholder title="Aplicaciones" />,
   admin:        Admin,
   maestros:     DatosMaestros,
 }
@@ -43,18 +41,16 @@ const PAGE_TITLES = {
 }
 
 const ALL_NAV = [
-  { id: 'inicio',        label: 'Inicio' },
-  { id: 'costos',        label: 'Costos' },
-  { id: 'ventas',        label: 'Ventas' },
-  { id: 'viajes',    label: 'Viajes' },
-  { id: 'trabajos',      label: 'Trabajos' },
-  { id: 'almacen',       label: 'Almacén' },
-  { id: 'aplicaciones',  label: 'Aplicaciones' },
-  { id: 'lluvias',       label: 'Lluvias' },
-  { id: 'almacen',       label: 'Almacén' },
-  { id: 'aplicaciones',  label: 'Aplicac.' },
-  { id: 'admin',         label: 'Admin' },
-  { id: 'maestros',      label: 'Maestros' },
+  { id: 'inicio',       label: 'Inicio' },
+  { id: 'costos',       label: 'Costos' },
+  { id: 'ventas',       label: 'Ventas' },
+  { id: 'viajes',       label: 'Viajes' },
+  { id: 'trabajos',     label: 'Trabajos' },
+  { id: 'almacen',      label: 'Almacén' },
+  { id: 'aplicaciones', label: 'Aplicac.' },
+  { id: 'lluvias',      label: 'Lluvias' },
+  { id: 'admin',        label: 'Admin' },
+  { id: 'maestros',     label: 'Maestros' },
 ]
 
 const MOBILE_ICONS = {
