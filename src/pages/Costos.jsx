@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { db, exportCSV, getMaestros, clearMaestrosCache } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -719,6 +719,8 @@ export default function Costos({ dolares }) {
 
   const [fCampanha, setFCampanha] = useState([])
   const [fMes, setFMes] = useState([])
+  const [fChCamp, setFChCamp]     = useState('')
+  const [fChCentro, setFChCentro] = useState('')
   const [fNombre, setFNombre] = useState([])
   const [fCentro, setFCentro] = useState([])
   const [fProv, setFProv] = useState([])
@@ -869,7 +871,7 @@ export default function Costos({ dolares }) {
       {showForm && <FormCosto dolar={dolar} onCancel={() => setShowForm(false)} onSave={async () => { setShowForm(false); await fetchAll() }} />}
 
       <div className="c-tabs">
-        {[['resumen', 'Resumen'], ['detalle', 'Detalle'], ['precios', 'Precios unitarios'], ['canjes', 'Canjes'], ['ctacte', 'Cta Cte']].map(([id, lbl]) => (
+        {[['resumen', 'Resumen'], ['detalle', 'Detalle'], ['precios', 'Precios unitarios'], ['canjes', 'Canjes'], ['ctacte', 'Cta Cte'], ['chequeos', 'Chequeos']].map(([id, lbl]) => (
           <button key={id} className={`c-tab${tab === id ? ' on' : ''}`} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -1348,6 +1350,213 @@ export default function Costos({ dolares }) {
             })}
         </div>
       )}
+    </div>
+
+      {/* ─────────── CHEQUEOS ─────────── */}
+      {tab === 'chequeos' && (() => {
+        // ── A: Gastos recurrentes ──────────────────────────────────────────
+        const RECURRENTES = ['Internet', 'Honorarios Gise', 'Netlify']
+
+        // Obtener todos los meses con al menos un costo
+        const todosLosMeses = [...new Set(costos.map(c => c.fecha?.slice(0,7)).filter(Boolean))].sort()
+        // Desde el primer mes en que aparece cada recurrente
+        const chequeoRec = RECURRENTES.map(prod => {
+          const registros = costos.filter(c => c.producto_servicio === prod)
+          if (registros.length === 0) return { prod, meses: [], faltantes: [], presentes: [] }
+          const primerMes = registros.map(c => c.fecha?.slice(0,7)).filter(Boolean).sort()[0]
+          const mesHoy    = new Date().toISOString().slice(0,7)
+          // Generar lista de meses desde primerMes hasta hoy
+          const rango = []
+          let cur = new Date(primerMes + '-01T12:00:00')
+          const fin = new Date(mesHoy + '-01T12:00:00')
+          while (cur <= fin) {
+            rango.push(cur.toISOString().slice(0,7))
+            cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+          }
+          const presentes  = new Set(registros.map(c => c.fecha?.slice(0,7)).filter(Boolean))
+          const faltantes  = rango.filter(m => !presentes.has(m))
+          return { prod, rango, faltantes, presentes: [...presentes].sort() }
+        })
+
+        // ── B: Por proveedor Fer vs Leo ────────────────────────────────────
+        const CAMPANHAS_OPT = [...new Set(costos.map(c => c.campanha).filter(Boolean))].sort().reverse()
+        const CENTROS_OPT   = [...new Set(costos.map(c => c.centro_costos).filter(Boolean))].sort()
+
+        // estados locales via IIFE no van — usamos props del padre declaradas antes del return
+        // Los estados fChCamp y fChCentro están declarados en el componente padre
+
+        const costosFiltB = costos.filter(c => {
+          if (fChCamp   && c.campanha     !== fChCamp)   return false
+          if (fChCentro && c.centro_costos !== fChCentro) return false
+          return true
+        })
+
+        // Agrupar por proveedor: total Fer, total Leo, total general
+        const porProveedor = {}
+        costosFiltB.forEach(c => {
+          const prov = c.proveedor || 'Sin proveedor'
+          if (!porProveedor[prov]) porProveedor[prov] = { fer: 0, leo: 0, otro: 0, total: 0, n: 0 }
+          const monto = c.precio_total_usd || c.monto_usd || 0
+          const nombre = c.factura_nombre
+          if (nombre === 'Fer') porProveedor[prov].fer += monto
+          else if (nombre === 'Leo') porProveedor[prov].leo += monto
+          else porProveedor[prov].otro += monto
+          porProveedor[prov].total += monto
+          porProveedor[prov].n += 1
+        })
+
+        const provRows = Object.entries(porProveedor)
+          .map(([prov, d]) => ({ prov, ...d }))
+          .filter(d => d.total > 0)
+          .sort((a, b) => b.total - a.total)
+
+        const totalFer  = provRows.reduce((a, r) => a + r.fer, 0)
+        const totalLeo  = provRows.reduce((a, r) => a + r.leo, 0)
+        const totalOtro = provRows.reduce((a, r) => a + r.otro, 0)
+        const grandTotal = provRows.reduce((a, r) => a + r.total, 0)
+        const maxTotal  = Math.max(...provRows.map(r => r.total), 1)
+
+        const fmt = v => v > 0 ? 'U$S ' + v.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'
+
+        return (
+          <div>
+            {/* ── Gastos recurrentes ── */}
+            <div className="card mb-3">
+              <h3 style={{ marginBottom: 4 }}>Gastos recurrentes</h3>
+              <p style={{ fontSize: 11, color: 'var(--arcilla)', marginBottom: 16 }}>
+                Verificación de que no falte ningún mes desde el primer registro
+              </p>
+              {chequeoRec.map(({ prod, rango, faltantes, presentes }) => {
+                const ok = faltantes.length === 0
+                return (
+                  <div key={prod} style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, border: '1px solid', borderColor: ok ? '#9DC87A' : '#F0997B', background: ok ? '#F4FAF0' : '#FEF3EF' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 16 }}>{ok ? '✅' : '⚠️'}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: ok ? '#2E4F26' : '#993C1D' }}>{prod}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{presentes.length} meses registrados</span>
+                      </div>
+                      {ok
+                        ? <span style={{ fontSize: 11, fontWeight: 600, color: '#2E4F26', background: '#EBF4E8', borderRadius: 20, padding: '3px 10px' }}>Al día ✓</span>
+                        : <span style={{ fontSize: 11, fontWeight: 600, color: '#993C1D', background: '#FAECE7', borderRadius: 20, padding: '3px 10px' }}>{faltantes.length} mes{faltantes.length > 1 ? 'es' : ''} faltante{faltantes.length > 1 ? 's' : ''}</span>
+                      }
+                    </div>
+                    {!ok && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                        {faltantes.map(m => (
+                          <span key={m} style={{ fontSize: 11, background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 6, padding: '2px 8px', color: '#993C1D' }}>
+                            {new Date(m + '-01T12:00:00').toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Grilla de meses */}
+                    {rango && rango.length > 0 && (
+                      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 8 }}>
+                        {rango.map(m => {
+                          const tiene = presentes.has(m)
+                          return (
+                            <div key={m} title={new Date(m + '-01T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
+                              style={{ width: 28, height: 14, borderRadius: 3, background: tiene ? '#4A7C3F' : '#F0997B', opacity: tiene ? 0.85 : 1 }}/>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ── Fer vs Leo por proveedor ── */}
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <h3 style={{ marginBottom: 4 }}>Gastos por proveedor — Fer vs Leo</h3>
+                  <p style={{ fontSize: 11, color: 'var(--arcilla)' }}>Comparación por factura a nombre</p>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <select value={fChCamp} onChange={e => setFChCamp(e.target.value)}
+                    style={{ padding: '6px 10px', border: '1px solid #D8C9A8', borderRadius: 6, fontSize: 12, background: '#F5F0E4', fontFamily: 'inherit' }}>
+                    <option value="">Todas las campañas</option>
+                    {CAMPANHAS_OPT.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select value={fChCentro} onChange={e => setFChCentro(e.target.value)}
+                    style={{ padding: '6px 10px', border: '1px solid #D8C9A8', borderRadius: 6, fontSize: 12, background: '#F5F0E4', fontFamily: 'inherit' }}>
+                    <option value="">Todos los centros</option>
+                    {CENTROS_OPT.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Totales */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 10, marginBottom: 16 }}>
+                {[
+                  ['Fer', fmt(totalFer), (totalFer / (grandTotal || 1) * 100).toFixed(0) + '%', '#4A7C3F', '#EBF4E8'],
+                  ['Leo', fmt(totalLeo), (totalLeo / (grandTotal || 1) * 100).toFixed(0) + '%', '#C8A96E', '#FAF5EC'],
+                  ['Total', fmt(grandTotal), provRows.length + ' proveedores', '#2C5A6A', '#E4F0F4'],
+                ].map(([lbl, val, sub, col, bg]) => (
+                  <div key={lbl} style={{ background: bg, border: '1px solid ' + col + '44', borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, color: col, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{lbl}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: col }}>{val}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tabla por proveedor */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#EDE0C8' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Proveedor</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#4A7C3F', textTransform: 'uppercase' }}>Fer</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#C8A96E', textTransform: 'uppercase' }}>Leo</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Otro</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 10, fontWeight: 600, color: '#2C5A6A', textTransform: 'uppercase' }}>Total</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#A08060', textTransform: 'uppercase' }}>Distribución</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {provRows.map((r, i) => {
+                      const pctFer = r.total > 0 ? r.fer / r.total * 100 : 0
+                      const pctLeo = r.total > 0 ? r.leo / r.total * 100 : 0
+                      return (
+                        <tr key={r.prov} style={{ borderBottom: '1px solid #EDE0C8', background: i % 2 === 0 ? '#FDFAF4' : 'white' }}>
+                          <td style={{ padding: '8px 10px', fontWeight: 500, color: 'var(--tierra)' }}>{r.prov}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: r.fer > 0 ? '#2E4F26' : 'var(--text-muted)' }}>{fmt(r.fer)}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: r.leo > 0 ? '#6B3E22' : 'var(--text-muted)' }}>{fmt(r.leo)}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{fmt(r.otro)}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: '#2C5A6A' }}>{fmt(r.total)}</td>
+                          <td style={{ padding: '8px 10px', minWidth: 120 }}>
+                            <div style={{ height: 8, background: '#E8D5A3', borderRadius: 4, overflow: 'hidden', display: 'flex' }}>
+                              <div style={{ height: 8, background: '#4A7C3F', width: pctFer + '%', opacity: 0.85 }} title={'Fer: ' + Math.round(pctFer) + '%'} />
+                              <div style={{ height: 8, background: '#C8A96E', width: pctLeo + '%', opacity: 0.85 }} title={'Leo: ' + Math.round(pctLeo) + '%'} />
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 2, fontSize: 10, color: 'var(--text-muted)' }}>
+                              {r.fer > 0 && <span style={{ color: '#2E4F26' }}>F:{Math.round(pctFer)}%</span>}
+                              {r.leo > 0 && <span style={{ color: '#6B3E22' }}>L:{Math.round(pctLeo)}%</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#EDE0C8', fontWeight: 700 }}>
+                      <td style={{ padding: '10px', fontSize: 11 }}>{provRows.length} proveedores</td>
+                      <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', color: '#2E4F26' }}>{fmt(totalFer)}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', color: '#6B3E22' }}>{fmt(totalLeo)}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{fmt(totalOtro)}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', color: '#2C5A6A' }}>{fmt(grandTotal)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
