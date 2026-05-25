@@ -1350,7 +1350,6 @@ export default function Costos({ dolares }) {
             })}
         </div>
       )}
-    </div>
 
       {/* ─────────── CHEQUEOS ─────────── */}
       {tab === 'chequeos' && (() => {
