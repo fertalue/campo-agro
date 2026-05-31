@@ -7,17 +7,37 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Campo — Gestión Agropecuaria',
+        name: 'Campo',
         short_name: 'Campo',
-        description: 'Gestión agropecuaria para Fer y Leo',
-        theme_color: '#2E4F26',
-        background_color: '#F5F0E4',
+        description: 'Gestión agropecuaria',
+        theme_color: '#7AB8CC',
+        background_color: '#7AB8CC',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
-          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' }
+          {
+            src: 'icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: 'icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: 'icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: 'favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+          }
         ]
       }
     })
