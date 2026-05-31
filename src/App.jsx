@@ -30,6 +30,8 @@ const PAGES = {
   trabajos:     Trabajos,
   almacen:      Almacen,
   aplicaciones: Aplicaciones,
+  documentos:    Documentos,
+  maquinaria:    Maquinaria,
   viajes:       Viajes,
   lluvias:      Lluvias,
   admin:        Admin,
