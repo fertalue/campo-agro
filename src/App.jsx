@@ -12,6 +12,8 @@ import Ventas from './pages/Ventas'
 import Trabajos from './pages/Trabajos'
 import Almacen from './pages/Almacen'
 import Aplicaciones from './pages/Aplicaciones'
+import Documentos from './pages/Documentos'
+import Maquinaria from './pages/Maquinaria'
 import './styles/theme.css'
 
 const Placeholder = ({ title }) => (
@@ -37,7 +39,7 @@ const PAGES = {
 const PAGE_TITLES = {
   inicio: 'Panel general', costos: 'Costos', ventas: 'Ventas / Granos',
   viajes: 'Viajes al campo', trabajos: 'Trabajos', lluvias: 'Precipitaciones',
-  almacen: 'Almacén', aplicaciones: 'Aplicaciones', admin: 'Administración', maestros: 'Datos maestros'
+  almacen: 'Almacén', aplicaciones: 'Aplicaciones', documentos: 'Documentos', maquinaria: 'Maquinaria', admin: 'Administración', maestros: 'Datos maestros'
 }
 
 const ALL_NAV = [
@@ -49,6 +51,8 @@ const ALL_NAV = [
   { id: 'almacen',      label: 'Almacén' },
   { id: 'aplicaciones', label: 'Aplicac.' },
   { id: 'lluvias',      label: 'Lluvias' },
+  { id: 'documentos',   label: 'Documentos' },
+  { id: 'maquinaria',   label: 'Maquinaria' },
   { id: 'admin',        label: 'Admin' },
   { id: 'maestros',     label: 'Maestros' },
 ]

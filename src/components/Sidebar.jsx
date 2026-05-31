@@ -12,8 +12,10 @@ const NAV_ITEMS = [
     { id: 'almacen',      label: 'Almacén' },
     { id: 'aplicaciones', label: 'Aplicaciones' },
     { id: 'lluvias',      label: 'Precipitaciones' },
+    { id: 'maquinaria',   label: 'Maquinaria' },
   ]},
   { section: 'Sistema', items: [
+    { id: 'documentos',  label: 'Documentos' },
     { id: 'admin', label: 'Administración' },
     { id: 'maestros', label: 'Datos maestros' },
   ]},
@@ -28,6 +30,8 @@ const ICONS = {
   aplicaciones: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 13h10M3 5l5-3 5 3M4 5v8M12 5v8M7 8h2"/></svg>,
   trabajos: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="9" height="12" rx="1.5"/><path d="M7 2V1M4.5 6h5M4.5 8.5h3.5M11 9l2 2 2.5-2.5"/></svg>,
   lluvias: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9C4 9 3 8 3 6.5C3 4.6 4.6 3 6.5 3C7.2 3 7.8 3.2 8.3 3.6C8.9 2.6 10 2 11.2 2C13.3 2 15 3.7 15 5.8C15 7 14.4 8 13.5 8.6"/><path d="M6 11L5 13M9 11L8 13M12 11L11 13"/></svg>,
+  documentos: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v4h4M6 9h4M6 12h4"/></svg>,
+  maquinaria: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="4" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><path d="M2 12H1V8l3-4h8l2 4v4h-1M6 12h4M4 4v4M12 4v4"/></svg>,
   maestros: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>,
   admin: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4"/></svg>,
 }
