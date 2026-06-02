@@ -398,14 +398,14 @@ function FormCosto({ onSave, onCancel, dolar, campanhas = CAMPANHAS_DEFAULT }) {
   const ivaTotalFact      = parseFloat(form.iva_total_factura) || 0
   const otrosImpTotalFact = parseFloat(form.otros_imp_total_factura) || 0
   const montoRelacionado  = esARS ? totFact.sinARS : totFact.sinUSD
-  const proporcion        = montoTotalFact > 0 ? montoRelacionado / montoTotalFact : 0
+  const proporcion        = montoTotalFact !== 0 ? montoRelacionado / montoTotalFact : 0
   const otrosImpUSD       = toUSD(otrosImpTotalFact * proporcion)
   const otrosImpARS       = toARS(otrosImpTotalFact * proporcion)
 
   async function submit(e) {
     e.preventDefault()
     if (esARS && (!form.cotizacion_usd || parseFloat(form.cotizacion_usd) <= 0)) { alert('Falta la cotizacion USD.'); return }
-    const itemsValidos = items.filter(it => parseFloat(it.precio_unitario) > 0)
+    const itemsValidos = items.filter(it => parseFloat(it.precio_unitario) !== 0 && it.precio_unitario !== '' && it.precio_unitario != null)
     if (itemsValidos.length === 0) { alert('Agrega al menos un item con precio.'); return }
     setSaving(true)
     const clean = v => (v === '' || v === undefined) ? null : v
