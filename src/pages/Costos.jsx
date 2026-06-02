@@ -8,7 +8,7 @@ const CENTROS = ['Producción','Costos únicos','Comercialización','Alquiler','
 const CONCEPTOS = ['Compra','NC','ND','Otro']
 const TIPOS_PAGO = ['Canje','Cta Cte','Contado','Redagro360','Redagro270','Cheque','Transferencia']
 const IVA_OPTS = [{ label: '0%', val: 0 },{ label: '10.5%', val: 0.105 },{ label: '21%', val: 0.21 }]
-const CAMPANHAS = ['25-26','24-25','23-24','22-23']
+const CAMPANHAS_DEFAULT = ['26-27','25-26','24-25','23-24']
 const MESES_CANJE = ['Ene 26','Feb 26','Mar 26','Abr 26','May 26','Jun 26','Jul 26','Ago 26','Sep 26','Oct 26','Nov 26','Dic 26','Ene 27','Feb 27','Mar 27','Abr 27']
 const CHIP = { 'Fer':'chip-green','Leo':'chip-amber','ambos':'chip-sky','Gise':'chip-muted','Sin factura':'chip-muted' }
 const BAR_COLORS = ['#4A7C3F','#7A9EAD','#C8A96E','#A0714F','#8B6B4A','#B8D0D8','#9DC87A','#6B4E33']
@@ -311,7 +311,7 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
 }
 
 // ── FormCosto — items unificados + total corriente ──────────────────────────
-function FormCosto({ onSave, onCancel, dolar }) {
+function FormCosto({ onSave, onCancel, dolar, campanhas = CAMPANHAS_DEFAULT }) {
   const fileRef = useRef()
   const [foto, setFoto] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -512,7 +512,7 @@ function FormCosto({ onSave, onCancel, dolar }) {
           <div className="field"><label className="label">Quien carga</label>{sel('quien_carga', ['Fer','Leo','Gise'])}</div>
         </div>
         <div className="grid-2">
-          <div className="field"><label className="label">Campana</label><SearchableSelect value={form.campanha} onChange={v => f('campanha', v)} options={CAMPANHAS} /></div>
+          <div className="field"><label className="label">Campana</label><SearchableSelect value={form.campanha} onChange={v => f('campanha', v)} options={campanhas} /></div>
           <div className="field"><label className="label">Centro de costo</label>{sel('centro_costos', CENTROS)}</div>
         </div>
         <div className="grid-2">
@@ -736,6 +736,7 @@ export default function Costos({ dolares }) {
 
   const [fCampanha, setFCampanha] = useState([])
   const [fMes, setFMes] = useState([])
+  const [campanhas, setCampanhas] = useState(CAMPANHAS_DEFAULT)
   const [fChCamp,   setFChCamp]   = useState([])
   const [fChCentro, setFChCentro] = useState([])
   const [gastosRec, setGastosRec] = useState([])
@@ -748,6 +749,7 @@ export default function Costos({ dolares }) {
 
   useEffect(() => { fetchAll() }, [])
   async function fetchAll() {
+    supabase.from('maestros').select('valor').eq('tipo','campanha').eq('activo',true).order('orden').then(({data}) => { if(data?.length) setCampanhas(data.map(d=>d.valor)) })
     supabase.from('maestros').select('id,tipo,valor').in('tipo',['gasto_rec_producto','gasto_rec_proveedor']).eq('activo',true).order('orden').then(({data}) => setGastosRec(data||[]))
     setLoading(true)
     const { data } = await db.costos.list()
@@ -887,7 +889,7 @@ export default function Costos({ dolares }) {
         </div>
       </div>
 
-      {showForm && <FormCosto dolar={dolar} onCancel={() => setShowForm(false)} onSave={async () => { setShowForm(false); await fetchAll() }} />}
+      {showForm && <FormCosto dolar={dolar} campanhas={campanhas} onCancel={() => setShowForm(false)} onSave={async () => { setShowForm(false); await fetchAll() }} />}
 
       <div className="c-tabs">
         {[['resumen', 'Resumen'], ['detalle', 'Detalle'], ['precios', 'Precios unitarios'], ['canjes', 'Canjes'], ['ctacte', 'Cta Cte'], ['chequeos', 'Chequeos']].map(([id, lbl]) => (
@@ -896,7 +898,7 @@ export default function Costos({ dolares }) {
       </div>
 
       <div className="c-filters">
-        <MultiSelect label="Campaña" options={CAMPANHAS} selected={fCampanha} onChange={setFCampanha} />
+        <MultiSelect label="Campaña" options={campanhas} selected={fCampanha} onChange={setFCampanha} />
         <MultiSelect label="Año / Mes" options={mesesU.map(m => ({ value: m, label: monthLabel(m) })).map(o => o.value)} selected={fMes} onChange={setFMes} placeholder="Todos los meses" />
         <MultiSelect label="Factura a nombre de" options={nombresU} selected={fNombre} onChange={setFNombre} />
         <MultiSelect label="Centro de costo" options={CENTROS} selected={fCentro} onChange={setFCentro} />

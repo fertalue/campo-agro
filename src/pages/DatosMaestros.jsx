@@ -14,6 +14,7 @@ const TIPOS = [
   { id: 'tipo_pago',      label: 'Tipos de pago' },
   { id: 'marca',          label: 'Marcas de productos' },
   { id: 'mes_canje',         label: 'Meses de canje' },
+  { id: 'campanha',           label: 'Campañas' },
   { id: 'categoria_trabajo', label: 'Categorías de trabajo' },
 
 ]
