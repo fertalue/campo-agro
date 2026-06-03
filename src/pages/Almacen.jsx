@@ -35,19 +35,33 @@ async function buscarEiqIA(producto, marca) {
   return null
 }
 
-// ── BuscadorFactura — panel de búsqueda de facturas ──────────────────────────
-function BuscadorFactura({ costos, onSelect, onClose }) {
+// ── BuscadorFactura — búsqueda en tiempo real contra Supabase ────────────────
+function BuscadorFactura({ onSelect, onClose }) {
   const [busq, setBusq] = useState('')
+  const [resultados, setResultados] = useState([])
+  const [buscando, setBuscando] = useState(false)
   const inputRef = useRef()
+  const timerRef = useRef()
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  const filtrados = costos.filter(c => {
-    if (!busq) return true
-    const q = busq.toLowerCase()
-    return (c.producto_servicio||'').toLowerCase().includes(q) ||
-           (c.proveedor||'').toLowerCase().includes(q) ||
-           (c.fecha||'').includes(q)
-  }).slice(0, 20)
+  useEffect(() => {
+    clearTimeout(timerRef.current)
+    if (!busq.trim()) { setResultados([]); return }
+    timerRef.current = setTimeout(async () => {
+      setBuscando(true)
+      const q = busq.trim()
+      const { data } = await supabase
+        .from('costos')
+        .select('id,fecha,proveedor,producto_servicio,precio_unitario_sin_iva_usd,cantidad,unidad')
+        .or(`producto_servicio.ilike.%${q}%,proveedor.ilike.%${q}%,fecha.ilike.%${q}%`)
+        .not('precio_unitario_sin_iva_usd', 'is', null)
+        .order('fecha', { ascending: false })
+        .limit(40)
+      setResultados(data || [])
+      setBuscando(false)
+    }, 300)
+    return () => clearTimeout(timerRef.current)
+  }, [busq])
 
   return (
     <div style={{
@@ -64,11 +78,15 @@ function BuscadorFactura({ costos, onSelect, onClose }) {
           ✕
         </button>
       </div>
-      {filtrados.length === 0 && (
-        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Sin resultados</div>
+      {buscando && <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Buscando...</div>}
+      {!buscando && busq && resultados.length === 0 && (
+        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Sin resultados para "{busq}"</div>
+      )}
+      {!buscando && !busq && (
+        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Escribi producto, proveedor o fecha para buscar</div>
       )}
       <div style={{maxHeight:260,overflowY:'auto',display:'flex',flexDirection:'column',gap:3}}>
-        {filtrados.map(c=>(
+        {resultados.map(c=>(
           <button key={c.id} onClick={()=>onSelect(c)}
             style={{display:'flex',alignItems:'center',gap:8,padding:'7px 8px',background:'#FDFAF4',
               border:'1px solid #E8D5A3',borderRadius:7,cursor:'pointer',textAlign:'left',fontFamily:'inherit',
@@ -96,14 +114,14 @@ function BuscadorFactura({ costos, onSelect, onClose }) {
         ))}
       </div>
       <div style={{marginTop:6,fontSize:10,color:'var(--text-muted)',textAlign:'center'}}>
-        {costos.length} facturas disponibles · mostrando {filtrados.length}
+        {resultados.length > 0 ? `${resultados.length} resultados${resultados.length===40?' (mostrá más términos para acotar)':''}` : ''}
       </div>
     </div>
   )
 }
 
 // ── FilaMov — fila editable de movimiento ─────────────────────────────────────
-function FilaMov({ m, costos, canEdit, onSave, onDelete, isLast }) {
+function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
   const [editando, setEditando] = useState(false)
   const [form, setForm]         = useState({ ...m })
   const [saving, setSaving]     = useState(false)
@@ -226,7 +244,7 @@ function FilaMov({ m, costos, canEdit, onSave, onDelete, isLast }) {
               )}
             </div>
             {showBuscador && (
-              <BuscadorFactura costos={costos} onSelect={seleccionarFactura} onClose={()=>setShowBuscador(false)}/>
+              <BuscadorFactura onSelect={seleccionarFactura} onClose={()=>setShowBuscador(false)}/>
             )}
           </div>
         )}
@@ -376,7 +394,7 @@ function FilaCatalogo({ prod, onSave, onDelete }) {
 }
 
 // ── FormMovimiento ────────────────────────────────────────────────────────────
-function FormMovimiento({ tipo, productos, costos, quienRegistra, onSave, onCancel }) {
+function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
   const isCompra = tipo==='compra'
   const [form, setForm] = useState({
     fecha:new Date().toISOString().split('T')[0],
@@ -509,7 +527,7 @@ function FormMovimiento({ tipo, productos, costos, quienRegistra, onSave, onCanc
                 )}
               </div>
               {showBuscador && (
-                <BuscadorFactura costos={costos} onSelect={seleccionarFactura} onClose={()=>setShowBuscador(false)}/>
+                <BuscadorFactura onSelect={seleccionarFactura} onClose={()=>setShowBuscador(false)}/>
               )}
             </div>
           </div>
@@ -546,18 +564,12 @@ export default function Almacen() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data:prods },{ data:ms },{ data:cs }] = await Promise.all([
+    const [{ data:prods },{ data:ms }] = await Promise.all([
       supabase.from('almacen_productos').select('*').eq('activo',true).order('producto'),
       supabase.from('almacen_movimientos').select('*').order('fecha',{ascending:false}),
-      supabase.from('costos')
-        .select('id,fecha,proveedor,producto_servicio,precio_unitario_sin_iva_usd,precio_total_sin_iva,precio_total_usd,cantidad,unidad')
-        .not('precio_unitario_sin_iva_usd','is',null)
-        .order('fecha',{ascending:false})
-        .limit(300),
     ])
     setProductos(prods||[])
     setMovs(ms||[])
-    setCostos(cs||[])
     setLoading(false)
   }
 
@@ -638,7 +650,7 @@ export default function Almacen() {
       </div>
 
       {showFormMov&&canEdit&&(
-        <FormMovimiento tipo={showFormMov} productos={productos} costos={costos} quienRegistra={quien}
+        <FormMovimiento tipo={showFormMov} productos={productos} quienRegistra={quien}
           onSave={async()=>{setShowFormMov(null);await fetchAll()}}
           onCancel={()=>setShowFormMov(null)}/>
       )}
@@ -726,7 +738,7 @@ export default function Almacen() {
               </thead>
               <tbody>
                 {movsFiltrados.map((m,i)=>(
-                  <FilaMov key={m.id} m={m} costos={costos} canEdit={canEdit}
+                  <FilaMov key={m.id} m={m} canEdit={canEdit}
                     isLast={i===movsFiltrados.length-1}
                     onSave={fetchAll}
                     onDelete={async(id)=>{if(confirm('¿Eliminar?')){await supabase.from('almacen_movimientos').delete().eq('id',id);await fetchAll()}}}
