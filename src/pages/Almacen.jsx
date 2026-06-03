@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -295,7 +295,7 @@ function FilaMov({ m, costos, canEdit, onSave, onDelete, isLast }) {
 
 // ── FilaCatalogo ──────────────────────────────────────────────────────────────
 function FilaCatalogo({ prod, onSave, onDelete }) {
-  const [editando, setEditando] = useState(false)
+  const [editando, setEditando] = useState(!prod.id)
   const [form, setForm] = useState({ producto:prod.producto, marca:prod.marca||'', unidad:prod.unidad||'L', eiq:prod.eiq||'', eiq_fuente:prod.eiq_fuente||'' })
   const [saving, setSaving] = useState(false)
   const [buscandoEiq, setBuscandoEiq] = useState(false)
@@ -311,10 +311,18 @@ function FilaCatalogo({ prod, onSave, onDelete }) {
 
   async function handleSave() {
     setSaving(true)
-    await supabase.from('almacen_productos').update({
-      producto:form.producto, marca:form.marca||null, unidad:form.unidad,
-      eiq:form.eiq?parseFloat(form.eiq):null, eiq_fuente:form.eiq_fuente||null,
-    }).eq('id', prod.id)
+    if (prod.id) {
+      await supabase.from('almacen_productos').update({
+        producto:form.producto, marca:form.marca||null, unidad:form.unidad,
+        eiq:form.eiq?parseFloat(form.eiq):null, eiq_fuente:form.eiq_fuente||null,
+      }).eq('id', prod.id)
+    } else {
+      await supabase.from('almacen_productos').insert({
+        producto:form.producto, marca:form.marca||null, unidad:form.unidad,
+        eiq:form.eiq?parseFloat(form.eiq):null, eiq_fuente:form.eiq_fuente||null,
+        activo:true,
+      })
+    }
     setSaving(false); setEditando(false); onSave()
   }
 
