@@ -472,7 +472,7 @@ export default function Aplicaciones() {
       supabase.from('ordenes_agroquimicos').select('*').order('fecha', { ascending: false }),
       supabase.from('ordenes_agroquimicos_productos').select('*, almacen_productos(eiq, unidad)'),
       supabase.from('almacen_productos').select('*').eq('activo', true).order('producto'),
-      supabase.from('almacen_movimientos').select('producto,marca,tipo,precio_unitario,fecha,cantidad,unidad,producto_id').order('fecha', {ascending:false}),
+      supabase.from('almacen_movimientos').select('producto,marca,tipo,precio_unitario,fecha,cantidad,unidad,producto_id,aplicacion_id').order('fecha', {ascending:false}),
     ])
     setOrdenes(ords || [])
     const byOrden = {}
@@ -497,6 +497,65 @@ export default function Aplicaciones() {
     if (!stockActual[m.producto_id]) stockActual[m.producto_id] = 0
     stockActual[m.producto_id] += m.tipo === 'salida_aplicacion' ? -Math.abs(m.cantidad) : m.cantidad
   })
+
+  async function descontarAlmacen(orden) {
+    const prods = prodsPorOrden[orden.id] || []
+    if (prods.length === 0) { alert('Esta orden no tiene productos cargados'); return }
+    if (!confirm(`¿Descontar del almacén los productos de esta aplicación (${orden.lote}, ${orden.fecha})?`)) return
+
+    // Calcular precio promedio ponderado de cada producto desde almacén
+    const movsPorProducto = {}
+    movsAlm.forEach(m => {
+      if (!m.producto) return
+      const key = m.producto.toLowerCase()
+      if (!movsPorProducto[key]) movsPorProducto[key] = []
+      movsPorProducto[key].push(m)
+    })
+
+    const inserts = prods
+      .filter(p => p.cantidad_total && p.cantidad_total > 0)
+      .map(p => {
+        const key = p.producto?.toLowerCase()
+        const movsProd = (movsPorProducto[key] || []).filter(m => m.tipo === 'compra' || m.tipo === 'stock_inicial')
+        const ppu = movsProd.length > 0
+          ? movsProd.reduce((a,m) => a + (m.precio_unitario||0)*m.cantidad, 0) /
+            movsProd.reduce((a,m) => a + m.cantidad, 0)
+          : null
+        return {
+          fecha: orden.fecha,
+          tipo: 'salida_aplicacion',
+          producto_id: p.producto_id || null,
+          producto: p.producto,
+          marca: p.marca || null,
+          cantidad: parseFloat(p.cantidad_total),
+          unidad: p.unidad,
+          precio_unitario: ppu || null,
+          precio_total: ppu ? ppu * parseFloat(p.cantidad_total) : null,
+          aplicacion_id: orden.id,
+          quien_registro: quien,
+          observaciones: `Aplicación: ${orden.lote} ${orden.fecha}`,
+        }
+      })
+
+    // Insertar movimientos de salida
+    const { error } = await supabase.from('almacen_movimientos').insert(inserts)
+    if (error) { alert('Error: ' + error.message); return }
+
+    // Marcar orden como descontada
+    await supabase.from('ordenes_agroquimicos').update({
+      descontado_almacen: true,
+      fecha_descuento: new Date().toISOString().split('T')[0]
+    }).eq('id', orden.id)
+
+    await fetchAll()
+  }
+
+  async function revertirDescuento(orden) {
+    if (!confirm('¿Revertir el descuento del almacén? Se eliminarán los movimientos de salida de esta aplicación.')) return
+    await supabase.from('almacen_movimientos').delete().eq('aplicacion_id', orden.id)
+    await supabase.from('ordenes_agroquimicos').update({ descontado_almacen: false, fecha_descuento: null }).eq('id', orden.id)
+    await fetchAll()
+  }
 
   async function deleteOrden(id) {
     if (!confirm('¿Eliminar esta orden?')) return
@@ -573,6 +632,17 @@ export default function Aplicaciones() {
                       📄 PDF
                     </button>
                     {canEdit && <>
+                      {!a.descontado_almacen ? (
+                        <button onClick={()=>descontarAlmacen(a)}
+                          style={{padding:'4px 9px',background:'#7A9EAD',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+                          ↓ Descontar almacén
+                        </button>
+                      ) : (
+                        <button onClick={()=>revertirDescuento(a)}
+                          style={{padding:'4px 9px',background:'#EBF4E8',color:'#2E4F26',border:'1px solid #9DC87A',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+                          ✓ Descontado
+                        </button>
+                      )}
                       <button onClick={()=>{setEditOrden(a);setShowForm(false)}}
                         style={{padding:'4px 9px',background:'transparent',border:'1px solid var(--border)',borderRadius:6,fontSize:11,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
                         Editar
