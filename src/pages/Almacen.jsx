@@ -126,7 +126,17 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
   const [form, setForm]         = useState({ ...m })
   const [saving, setSaving]     = useState(false)
   const [showBuscador, setShowBuscador] = useState(false)
+  const [facturaVinculada, setFacturaVinculada] = useState(null)
   const buscadorRef = useRef()
+
+  // Cargar datos de la factura vinculada si existe
+  useEffect(() => {
+    if (!form.costo_id) { setFacturaVinculada(null); return }
+    supabase.from('costos')
+      .select('id,fecha,proveedor,producto_servicio,precio_unitario_sin_iva_usd,cantidad,unidad')
+      .eq('id', form.costo_id).single()
+      .then(({ data }) => setFacturaVinculada(data))
+  }, [form.costo_id])
   const f = (k,v) => setForm(p => {
     const next = {...p,[k]:v}
     if (k==='cantidad'||k==='precio_unitario') {
@@ -173,7 +183,6 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
 
   const border = isLast ? 'none' : '1px solid #EDE0C8'
   const si = {padding:'5px 7px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,fontFamily:'inherit',background:'#FDFAF4'}
-  const facturaVinculada = costos.find(c=>c.id===form.costo_id)
 
   if (editando) return (
     <tr style={{background:'#FFF9EE',borderBottom:border}}>
@@ -404,7 +413,7 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
   })
   const [saving, setSaving] = useState(false)
   const [showBuscador, setShowBuscador] = useState(false)
-  const facturaVinculada = costos.find(c=>c.id===form.costo_id)
+  const [facturaVinculada, setFacturaVinculada] = useState(null)
 
   const f = (k,v) => setForm(p=>{
     const next = {...p,[k]:v}
@@ -426,6 +435,7 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
 
   function seleccionarFactura(costo) {
     setShowBuscador(false)
+    setFacturaVinculada(costo)
     setForm(p=>{
       const next={...p,costo_id:costo.id,proveedor:costo.proveedor||p.proveedor}
       if (costo.precio_unitario_sin_iva_usd){
@@ -554,7 +564,7 @@ export default function Almacen() {
   const [tab, setTab]             = useState('stock')
   const [productos, setProductos] = useState([])
   const [movs, setMovs]           = useState([])
-  const [costos, setCostos]       = useState([])
+  // costos se cargan on-demand via BuscadorFactura
   const [loading, setLoading]     = useState(true)
   const [showFormProd, setShowFormProd] = useState(false)
   const [showFormMov, setShowFormMov]   = useState(null)
