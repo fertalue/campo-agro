@@ -174,8 +174,6 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
       return next
     })
   }
-    })
-  }
 
   async function handleSave() {
     setSaving(true)
