@@ -6,6 +6,9 @@ const TIPOS_MAQ = ['Tractor','Pulverizadora','Cosechadora','Sembradora','Mixer',
 const TIPOS_MANT = ['Aceite y filtros','Filtros','Frenos','Neumáticos','Revisión general','Reparación','Calibración','Otro']
 const TIPO_ICON = { 'Tractor':'🚜','Pulverizadora':'💧','Cosechadora':'🌾','Sembradora':'🌱','Mixer':'⚙️','Acoplado':'🚛','Camioneta':'🚗','Otro':'🔧' }
 const MANT_COLOR = { 'Aceite y filtros':'#C8A96E','Filtros':'#A08060','Frenos':'#993C1D','Neumáticos':'#4A7C3F','Revisión general':'#2C5A6A','Reparación':'#7A4030','Calibración':'#6B3E22','Otro':'#888' }
+// Tipos que usan km en lugar de horas
+const USA_KM = ['Camioneta','Auto','Vehículo']
+const getMedidor = (tipo) => USA_KM.includes(tipo) ? 'km' : 'hs'
 
 function fmtFecha(f) {
   if (!f) return '—'
@@ -25,15 +28,15 @@ function FormMaquina({ maq, onSave, onCancel }) {
   const isEdit = !!maq
   const [form, setForm] = useState(maq ? {
     nombre: maq.nombre, tipo: maq.tipo||'Tractor', marca: maq.marca||'', modelo: maq.modelo||'',
-    anio: maq.anio||'', horas_actuales: maq.horas_actuales||0,
+    anio: maq.anio||'', horas_actuales: maq.horas_actuales||0, tipo_medidor: maq.tipo_medidor||getMedidor(maq.tipo||'Tractor'),
     numero_serie: maq.numero_serie||'', patente: maq.patente||'', notas: maq.notas||''
-  } : { nombre:'', tipo:'Tractor', marca:'', modelo:'', anio:'', horas_actuales:0, numero_serie:'', patente:'', notas:'' })
+  } : { nombre:'', tipo:'Tractor', marca:'', modelo:'', anio:'', horas_actuales:0, tipo_medidor:'hs', numero_serie:'', patente:'', notas:'' })
   const [saving, setSaving] = useState(false)
   const f = (k,v) => setForm(p=>({...p,[k]:v}))
 
   async function save(e) {
     e.preventDefault(); setSaving(true)
-    const payload = { ...form, anio: form.anio ? parseInt(form.anio) : null, horas_actuales: parseFloat(form.horas_actuales)||0 }
+    const payload = { ...form, anio: form.anio ? parseInt(form.anio) : null, horas_actuales: parseFloat(form.horas_actuales)||0, tipo_medidor: form.tipo_medidor||'hs' }
     if (isEdit) await supabase.from('maquinas').update(payload).eq('id', maq.id)
     else await supabase.from('maquinas').insert(payload)
     setSaving(false); onSave()
@@ -73,7 +76,20 @@ function FormMaquina({ maq, onSave, onCancel }) {
           <div className="field"><label className="label">Año</label>
             <input style={si} type="number" min="1980" max="2030" value={form.anio} onChange={e=>f('anio',e.target.value)} placeholder="2020"/>
           </div>
-          <div className="field"><label className="label">Horas actuales</label>
+          <div className="field"><label className="label">Medidor</label>
+            <div style={{display:'flex',gap:5}}>
+              {[['hs','Horas'],['km','Kilómetros']].map(([val,lbl])=>(
+                <button key={val} type="button" onClick={()=>f('tipo_medidor',val)}
+                  style={{flex:1,padding:'7px',borderRadius:6,fontSize:12,cursor:'pointer',border:'1px solid',fontFamily:'inherit',
+                    background:form.tipo_medidor===val?'#2C5A6A':'transparent',
+                    color:form.tipo_medidor===val?'#F5F0E4':'var(--arcilla)',
+                    borderColor:form.tipo_medidor===val?'#2C5A6A':'var(--border)'}}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field"><label className="label">{form.tipo_medidor==='km'?'Kilómetros actuales':'Horas actuales'}</label>
             <input style={si} type="number" step="0.1" value={form.horas_actuales} onChange={e=>f('horas_actuales',e.target.value)} placeholder="0"/>
           </div>
         </div>
@@ -98,7 +114,8 @@ function FormMaquina({ maq, onSave, onCancel }) {
 }
 
 // ── FormMantenimiento ─────────────────────────────────────────────────────────
-function FormMantenimiento({ maquinaId, horasActuales, quienRegistra, onSave, onCancel }) {
+function FormMantenimiento({ maquinaId, horasActuales, medidor, quienRegistra, onSave, onCancel }) {
+  const unidad = medidor === 'km' ? 'km' : 'hs'
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
     tipo: 'Aceite y filtros', descripcion:'', horas_maquina: horasActuales||'',
@@ -136,7 +153,7 @@ function FormMantenimiento({ maquinaId, horasActuales, quienRegistra, onSave, on
           <div className="field"><label className="label">Fecha</label>
             <input style={si} type="date" value={form.fecha} onChange={e=>f('fecha',e.target.value)} required/>
           </div>
-          <div className="field"><label className="label">Horas máquina al momento</label>
+          <div className="field"><label className="label">{unidad==='km'?'Km al momento':'Horas máquina al momento'}</label>
             <input style={si} type="number" step="0.1" value={form.horas_maquina} onChange={e=>f('horas_maquina',e.target.value)} placeholder={horasActuales||'0'}/>
           </div>
         </div>
@@ -163,8 +180,8 @@ function FormMantenimiento({ maquinaId, horasActuales, quienRegistra, onSave, on
           <div className="field"><label className="label">Taller / Proveedor</label>
             <input style={si} value={form.proveedor} onChange={e=>f('proveedor',e.target.value)} placeholder="Ej: Taller García"/>
           </div>
-          <div className="field"><label className="label">Próximo servicio (hs)</label>
-            <input style={si} type="number" step="1" value={form.proximo_km_hs} onChange={e=>f('proximo_km_hs',e.target.value)} placeholder="hs para el próximo"/>
+          <div className="field"><label className="label">Próximo servicio ({unidad})</label>
+            <input style={si} type="number" step="1" value={form.proximo_km_hs} onChange={e=>f('proximo_km_hs',e.target.value)} placeholder={unidad==='km'?'km para el próximo':'hs para el próximo'}/>
           </div>
         </div>
         <div style={{display:'flex',gap:8}}>
@@ -180,6 +197,8 @@ function FormMantenimiento({ maquinaId, horasActuales, quienRegistra, onSave, on
 function FichaMaquina({ maq, mantenimientos, canEdit, quien, onEdit, onDelete, onRefresh }) {
   const [expanded, setExpanded]   = useState(false)
   const [showForm, setShowForm]   = useState(false)
+  const medidor = maq.tipo_medidor || getMedidor(maq.tipo)
+  const unidad  = medidor === 'km' ? 'km' : 'hs'
 
   const mants = mantenimientos.filter(m=>m.maquina_id===maq.id).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha))
   const ultimo = mants[0]
@@ -208,7 +227,7 @@ function FichaMaquina({ maq, mantenimientos, canEdit, quien, onEdit, onDelete, o
             {maq.anio && <span style={{fontSize:11,color:'var(--text-muted)'}}>({maq.anio})</span>}
           </div>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            <span style={{fontSize:12,color:'#2C5A6A',fontWeight:500}}>{fmtNum(maq.horas_actuales,1)} hs</span>
+            <span style={{fontSize:12,color:'#2C5A6A',fontWeight:500}}>{fmtNum(maq.horas_actuales,1)} {unidad}</span>
             {ultimo && <span style={{fontSize:11,color:'var(--text-muted)'}}>Último mant.: {fmtFecha(ultimo.fecha)} ({diasUltimo}d)</span>}
             {mants.length > 0 && <span style={{fontSize:11,color:'var(--text-muted)'}}>{mants.length} registros · U$S {fmtNum(costoTotal,0)}</span>}
           </div>
@@ -253,7 +272,7 @@ function FichaMaquina({ maq, mantenimientos, canEdit, quien, onEdit, onDelete, o
           {/* Form nuevo mantenimiento */}
           {showForm && canEdit ? (
             <FormMantenimiento
-              maquinaId={maq.id} horasActuales={maq.horas_actuales} quienRegistra={quien}
+              maquinaId={maq.id} horasActuales={maq.horas_actuales} medidor={medidor} quienRegistra={quien}
               onSave={async()=>{ setShowForm(false); await onRefresh() }}
               onCancel={()=>setShowForm(false)}
             />
@@ -275,13 +294,13 @@ function FichaMaquina({ maq, mantenimientos, canEdit, quien, onEdit, onDelete, o
                   background:'white',border:'1px solid #E8D5A3',borderRadius:8,borderLeft:`3px solid ${MANT_COLOR[m.tipo]||'#888'}`}}>
                   <div style={{flexShrink:0,textAlign:'center',minWidth:40}}>
                     <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)'}}>{fmtFecha(m.fecha)}</div>
-                    {m.horas_maquina && <div style={{fontSize:10,color:'var(--text-muted)'}}>{fmtNum(m.horas_maquina,0)} hs</div>}
+                    <span style={{fontSize:10,color:'var(--text-muted)'}}>{m.horas_maquina&&<>{fmtNum(m.horas_maquina,0)} {unidad}</>}</span>
                   </div>
                   <div style={{flex:1}}>
                     <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:2}}>
                       <span style={{fontSize:11,fontWeight:600,color:MANT_COLOR[m.tipo]||'#888'}}>{m.tipo}</span>
                       {m.proveedor && <span style={{fontSize:10,color:'var(--text-muted)'}}>· {m.proveedor}</span>}
-                      {m.proximo_km_hs && <span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>Próx. {fmtNum(m.horas_maquina+m.proximo_km_hs,0)} hs</span>}
+              {m.proximo_km_hs && <span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>Próx. {fmtNum(m.horas_maquina+m.proximo_km_hs,0)} {unidad}</span>}
                     </div>
                     {m.descripcion && <div style={{fontSize:11,color:'var(--arcilla)'}}>{m.descripcion}</div>}
                   </div>
