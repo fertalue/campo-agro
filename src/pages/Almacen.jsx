@@ -52,9 +52,8 @@ function BuscadorFactura({ onSelect, onClose }) {
       const q = busq.trim()
       const { data } = await supabase
         .from('costos')
-        .select('id,fecha,proveedor,producto_servicio,precio_unitario_sin_iva_usd,cantidad,unidad')
-        .or(`producto_servicio.ilike.%${q}%,proveedor.ilike.%${q}%,fecha.ilike.%${q}%`)
-        .not('precio_unitario_sin_iva_usd', 'is', null)
+        .select('id,fecha,proveedor,producto_servicio,precio_unitario_sin_iva_usd,precio_total_sin_iva,cantidad,unidad')
+        .or(`producto_servicio.ilike.%${q}%,proveedor.ilike.%${q}%`)
         .order('fecha', { ascending: false })
         .limit(40)
       setResultados(data || [])
@@ -102,10 +101,15 @@ function BuscadorFactura({ onSelect, onClose }) {
               </div>
             </div>
             <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontSize:12,fontWeight:700,color:'#2E4F26'}}>
-                U$S {fmtNum(c.precio_unitario_sin_iva_usd,3)}
-                <span style={{fontSize:10,fontWeight:400,color:'var(--text-muted)'}}>/u</span>
-              </div>
+              {c.precio_unitario_sin_iva_usd
+                ? <div style={{fontSize:12,fontWeight:700,color:'#2E4F26'}}>
+                    U$S {fmtNum(c.precio_unitario_sin_iva_usd,3)}
+                    <span style={{fontSize:10,fontWeight:400,color:'var(--text-muted)'}}>/u</span>
+                  </div>
+                : c.precio_total_sin_iva
+                  ? <div style={{fontSize:12,fontWeight:600,color:'#4A7C3F'}}>U$S {fmtNum(c.precio_total_sin_iva,2)} <span style={{fontSize:10,fontWeight:400}}>total</span></div>
+                  : null
+              }
               {c.cantidad && (
                 <div style={{fontSize:10,color:'var(--text-muted)'}}>{fmtNum(c.cantidad,0)} {c.unidad}</div>
               )}
