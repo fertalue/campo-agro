@@ -17,10 +17,10 @@ function fmtNum(v, dec=0) {
 
 function getPrecioPromedio(movs) {
   const entradas = movs.filter(m =>
-    (m.tipo==='compra'||m.tipo==='stock_inicial') && m.precio_unitario && m.cantidad>0
+    (m.tipo==='compra'||m.tipo==='stock_inicial') && m.precio_unitario && parseFloat(m.cantidad)>0
   )
-  const totalCant  = entradas.reduce((a,m)=>a+m.cantidad, 0)
-  const totalValor = entradas.reduce((a,m)=>a+m.precio_unitario*m.cantidad, 0)
+  const totalCant  = entradas.reduce((a,m) => a + parseFloat(m.cantidad),  0)
+  const totalValor = entradas.reduce((a,m) => a + parseFloat(m.precio_unitario) * parseFloat(m.cantidad), 0)
   return totalCant>0 ? totalValor/totalCant : null
 }
 
@@ -154,17 +154,26 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
     }
     return next
   })
-
   function seleccionarFactura(costo) {
     setShowBuscador(false)
     setForm(p => {
-      const next = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
-      if (costo.precio_unitario_sin_iva_usd) {
-        next.precio_unitario = costo.precio_unitario_sin_iva_usd.toFixed(4)
-        const cant = parseFloat(next.cantidad)||0
-        if (cant>0) next.precio_total = (cant*costo.precio_unitario_sin_iva_usd).toFixed(2)
+      const next  = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
+      const pUnit = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
+      const pTot  = parseFloat(costo.precio_total_sin_iva)  || 0
+      const cant  = parseFloat(next.cantidad) || 0
+      if (pUnit > 0) {
+        next.precio_unitario = pUnit.toFixed(4)
+        if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
+      } else if (pTot > 0 && cant > 0) {
+        // Sin precio/u en factura -> calculamos total_factura / cantidad_movimiento
+        next.precio_unitario = (pTot / cant).toFixed(4)
+        next.precio_total    = pTot.toFixed(2)
+      } else if (pTot > 0) {
+        next.precio_total = pTot.toFixed(2)
       }
       return next
+    })
+  }
     })
   }
 
@@ -440,12 +449,20 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
   function seleccionarFactura(costo) {
     setShowBuscador(false)
     setFacturaVinculada(costo)
-    setForm(p=>{
-      const next={...p,costo_id:costo.id,proveedor:costo.proveedor||p.proveedor}
-      if (costo.precio_unitario_sin_iva_usd){
-        next.precio_unitario=costo.precio_unitario_sin_iva_usd.toFixed(4)
-        const cant=parseFloat(next.cantidad)||0
-        if (cant>0) next.precio_total=(cant*costo.precio_unitario_sin_iva_usd).toFixed(2)
+    setForm(p => {
+      const next  = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
+      const pUnit = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
+      const pTot  = parseFloat(costo.precio_total_sin_iva)  || 0
+      const cant  = parseFloat(next.cantidad) || 0
+      if (pUnit > 0) {
+        next.precio_unitario = pUnit.toFixed(4)
+        if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
+      } else if (pTot > 0 && cant > 0) {
+        // Sin precio/u en factura -> calculamos total_factura / cantidad_movimiento
+        next.precio_unitario = (pTot / cant).toFixed(4)
+        next.precio_total    = pTot.toFixed(2)
+      } else if (pTot > 0) {
+        next.precio_total = pTot.toFixed(2)
       }
       return next
     })
@@ -594,11 +611,13 @@ export default function Almacen() {
 
   // Stock y valorización
   const stockPorProducto = {}
-  movs.forEach(m=>{
-    const key = m.producto_id||(m.producto+'|'+(m.marca||''))
-    if (!stockPorProducto[key]) stockPorProducto[key]={producto:m.producto,marca:m.marca,unidad:m.unidad,cantidad:0,movs:[],producto_id:m.producto_id}
-    const s=stockPorProducto[key]
-    s.cantidad += m.tipo==='salida_aplicacion'?-Math.abs(m.cantidad):m.cantidad
+  movs.forEach(m => {
+    const key = m.producto_id || (m.producto+'|'+(m.marca||''))
+    if (!stockPorProducto[key]) stockPorProducto[key] = {producto:m.producto,marca:m.marca,unidad:m.unidad,cantidad:0,movs:[],producto_id:m.producto_id}
+    const s    = stockPorProducto[key]
+    const cant = parseFloat(m.cantidad) || 0
+    if (m.tipo === 'salida_aplicacion') { s.cantidad -= Math.abs(cant) }
+    else { s.cantidad += cant }  // ajustes negativos ya traen su signo
     s.movs.push(m)
   })
 
