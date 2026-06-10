@@ -408,48 +408,56 @@ function FormCosto({ onSave, onCancel, dolar, campanhas = CAMPANHAS_DEFAULT }) {
     const itemsValidos = items.filter(it => parseFloat(it.precio_unitario) !== 0 && it.precio_unitario !== '' && it.precio_unitario != null)
     if (itemsValidos.length === 0) { alert('Agrega al menos un item con precio.'); return }
     setSaving(true)
-    const clean = v => (v === '' || v === undefined) ? null : v
-    let firstId = null
-    for (let i = 0; i < itemsValidos.length; i++) {
-      const item = itemsValidos[i]
-      const c = calcItem(item)
-      const isFirst = i === 0
-      const otrosU = isFirst && form.carga_especial ? otrosImpUSD : null
-      const otrosA = isFirst && form.carga_especial ? otrosImpARS : null
-      const { data, error } = await db.costos.insert({
-        fecha: form.fecha, quien_carga: form.quien_carga, campanha: form.campanha,
-        centro_costos: form.centro_costos, proveedor: form.proveedor, concepto: form.concepto,
-        moneda: form.moneda, cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
-        factura_nombre: clean(form.factura_nombre), factura_numero: clean(form.factura_numero),
-        tipo_pago: form.tipo_pago, mes_canje: clean(form.mes_canje),
-        dia_pago: clean(form.dia_pago), check_pago: form.check_pago || false,
-        comentarios: clean(form.comentarios),
-        carga_especial: isFirst ? form.carga_especial : false,
-        producto_servicio: clean(item.producto_servicio),
-        precio_unitario: parseFloat(item.precio_unitario) || null,
-        cantidad: parseFloat(item.cantidad) || null,
-        unidad: clean(item.unidad),
-        iva_pct: item.iva_pct || 0, iva_incluido: item.iva_incluido,
-        marca: clean(item.marca), presentacion: clean(item.presentacion),
-        contenido_por_unidad: parseFloat(item.contenido_por_unidad) || null,
-        unidad_base: clean(item.unidad_base),
-        precio_por_unidad_base: c.puBase,
-        precio_total_sin_iva: c.totSinUSD || null, monto_usd: c.totSinUSD || null,
-        monto_iva: toUSD(c.totIva) || null, valor_total_iva_usd: toUSD(c.totIva) || null,
-        precio_total_con_iva: c.totConUSD || null,
-        valor_total_otros_imp_usd: otrosU, otros_impuestos: otrosU,
-        precio_total_usd: ((c.totConUSD || 0) + (otrosU || 0)) || null,
-        precio_total_sin_iva_ars: c.totSinARS || null,
-        valor_total_iva_ars: toARS(c.totIva) || null,
-        precio_total_con_iva_ars: c.totConARS || null,
-        valor_total_otros_imp_ars: otrosA,
-        precio_total_ars: ((c.totConARS || 0) + (otrosA || 0)) || null,
-      })
-      if (error) { setSaving(false); alert('Error al guardar: ' + (error.message || JSON.stringify(error))); return }
-      if (i === 0 && data?.[0]?.id) firstId = data[0].id
+    try {
+      const clean = v => (v === '' || v === undefined) ? null : v
+      let firstId = null
+      for (let i = 0; i < itemsValidos.length; i++) {
+        const item = itemsValidos[i]
+        const c = calcItem(item)
+        const isFirst = i === 0
+        const otrosU = isFirst && form.carga_especial ? otrosImpUSD : null
+        const otrosA = isFirst && form.carga_especial ? otrosImpARS : null
+        const { data, error } = await db.costos.insert({
+          fecha: form.fecha, quien_carga: form.quien_carga, campanha: form.campanha,
+          centro_costos: form.centro_costos, proveedor: form.proveedor, concepto: form.concepto,
+          moneda: form.moneda, cotizacion_usd: parseFloat(form.cotizacion_usd) || null,
+          factura_nombre: clean(form.factura_nombre), factura_numero: clean(form.factura_numero),
+          tipo_pago: form.tipo_pago, mes_canje: clean(form.mes_canje),
+          dia_pago: clean(form.dia_pago), check_pago: form.check_pago || false,
+          comentarios: clean(form.comentarios),
+          carga_especial: isFirst ? form.carga_especial : false,
+          producto_servicio: clean(item.producto_servicio),
+          precio_unitario: parseFloat(item.precio_unitario) || null,
+          cantidad: parseFloat(item.cantidad) || null,
+          unidad: clean(item.unidad),
+          iva_pct: item.iva_pct || 0, iva_incluido: item.iva_incluido,
+          marca: clean(item.marca), presentacion: clean(item.presentacion),
+          contenido_por_unidad: parseFloat(item.contenido_por_unidad) || null,
+          unidad_base: clean(item.unidad_base),
+          precio_por_unidad_base: c.puBase,
+          precio_total_sin_iva: c.totSinUSD !== 0 ? c.totSinUSD : null,
+          monto_usd: c.totSinUSD !== 0 ? c.totSinUSD : null,
+          monto_iva: toUSD(c.totIva) || null, valor_total_iva_usd: toUSD(c.totIva) || null,
+          precio_total_con_iva: c.totConUSD !== 0 ? c.totConUSD : null,
+          valor_total_otros_imp_usd: otrosU, otros_impuestos: otrosU,
+          precio_total_usd: (c.totConUSD + (otrosU || 0)) !== 0 ? (c.totConUSD + (otrosU || 0)) : null,
+          precio_total_sin_iva_ars: c.totSinARS !== 0 ? c.totSinARS : null,
+          valor_total_iva_ars: toARS(c.totIva) || null,
+          precio_total_con_iva_ars: c.totConARS !== 0 ? c.totConARS : null,
+          valor_total_otros_imp_ars: otrosA,
+          precio_total_ars: (c.totConARS + (otrosA || 0)) !== 0 ? (c.totConARS + (otrosA || 0)) : null,
+        })
+        if (error) { alert('Error al guardar: ' + (error.message || JSON.stringify(error))); return }
+        if (i === 0 && data?.[0]?.id) firstId = data[0].id
+      }
+      if (foto && firstId) { const url = await db.uploadFoto(foto, firstId); await db.costos.update(firstId, { foto_url: url }) }
+      onSave()
+    } catch(err) {
+      console.error('Error en submit:', err)
+      alert('Error inesperado: ' + (err?.message || String(err)))
+    } finally {
+      setSaving(false)
     }
-    if (foto && firstId) { const url = await db.uploadFoto(foto, firstId); await db.costos.update(firstId, { foto_url: url }) }
-    setSaving(false); onSave()
   }
 
   async function leerFactura() {
