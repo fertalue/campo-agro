@@ -610,7 +610,9 @@ export default function Almacen() {
   // Stock y valorización
   const stockPorProducto = {}
   movs.forEach(m => {
-    const key = m.producto_id || (m.producto+'|'+(m.marca||''))
+    // Agrupar siempre por nombre+marca para evitar splits cuando
+    // algunos movimientos tienen producto_id y otros no
+    const key = (m.producto + '|' + (m.marca||'')).toUpperCase()
     if (!stockPorProducto[key]) stockPorProducto[key] = {producto:m.producto,marca:m.marca,unidad:m.unidad,cantidad:0,movs:[],producto_id:m.producto_id}
     const s    = stockPorProducto[key]
     const cant = parseFloat(m.cantidad) || 0
