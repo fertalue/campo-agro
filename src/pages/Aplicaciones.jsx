@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -450,6 +450,319 @@ ${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#
   const w = window.open('','_blank'); w.document.write(html); w.document.close()
 }
 
+
+// ── OrdenCard — tarjeta con edición inline campo por campo ────────────────────
+function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onDescontar, onRevertir, onPDF }) {
+  const [editando, setEditando] = useState(null)
+  const [val, setVal]           = useState('')
+  const [saving, setSaving]     = useState(false)
+
+  const sup        = parseFloat(a.superficie_ha)||0
+  const costoLabor = parseFloat(a.costo_ha_usd)||0
+  const costoProds = prods.reduce((s,p) => {
+    const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
+    return s + (precio && p.cantidad_ha ? precio*parseFloat(p.cantidad_ha) : 0)
+  },0)
+  const costoTotalHa = costoLabor + costoProds
+  const eiqTotal = prods.reduce((s,p) => {
+    const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
+    return s + (p.cantidad_ha ? parseFloat(p.cantidad_ha)*eiq*(sup||1) : 0)
+  },0)
+
+  function abrirEditor(campo, valorActual) { setEditando(campo); setVal(valorActual ?? '') }
+  function cancelar() { setEditando(null); setVal('') }
+
+  async function guardarCampo(campo, valor) {
+    setSaving(true)
+    await supabase.from('ordenes_agroquimicos').update({ [campo]: valor ?? null }).eq('id', a.id)
+    setSaving(false); setEditando(null); onRefresh()
+  }
+
+  const CULTIVOS_OPT = ['Soja','Maíz','Trigo','Girasol','Sorgo','Campo natural','Barbecho']
+  const TIPOS_OPT    = [['barbecho','Barbecho'],['presiembra','Presiembra'],['cultivo','Cultivo']]
+  const tipoLabel = a.tipo_aplicacion==='barbecho'?'Barbecho':a.tipo_aplicacion==='presiembra'?'Presiembra':'Cultivo'
+  const tipoBg    = a.tipo_aplicacion==='barbecho'?'#FAF5EC':a.tipo_aplicacion==='presiembra'?'#EBF4E8':'#E4F0F4'
+  const tipoColor = a.tipo_aplicacion==='barbecho'?'#6B3E22':a.tipo_aplicacion==='presiembra'?'#2E4F26':'#2C5A6A'
+  const si = {padding:'4px 7px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:11,fontFamily:'inherit',background:'white'}
+
+  // Botones de guardado
+  const BtnOk  = ({ onClick }) => <button onClick={onClick} disabled={saving} style={{padding:'3px 7px',background:'var(--pasto)',color:'white',border:'none',borderRadius:4,fontSize:10,cursor:'pointer'}}>{saving?'...':'✓'}</button>
+  const BtnX   = () => <button onClick={cancelar} style={{padding:'3px 6px',background:'#F5F0E8',border:'1px solid #D8C9A8',borderRadius:4,fontSize:10,cursor:'pointer'}}>✕</button>
+  const EditBtn = ({ campo, label, valor }) => (
+    <button onClick={()=>abrirEditor(campo, valor)}
+      style={{padding:'2px 7px',border:'1px solid #D8C9A8',borderRadius:20,fontSize:10,cursor:'pointer',background:'#F5F0E8',color:'var(--arcilla)',fontFamily:'inherit'}}>
+      ✏ {label}
+    </button>
+  )
+
+  return (
+    <div style={{background:'#FDFAF4',border:'1px solid #D8C9A8',borderRadius:12,padding:'14px 16px'}}>
+
+      {/* Header */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+        <div style={{flex:1,minWidth:0}}>
+
+          {/* Lote + Tipo */}
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4,flexWrap:'wrap'}}>
+            {editando==='lote' ? (
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                <input autoFocus value={val} onChange={e=>setVal(e.target.value)}
+                  style={{...si,width:180}} placeholder="Nombre del lote"
+                  onKeyDown={e=>{if(e.key==='Enter')guardarCampo('lote',val);if(e.key==='Escape')cancelar()}}/>
+                <BtnOk onClick={()=>guardarCampo('lote',val)}/><BtnX/>
+              </span>
+            ) : (
+              <span onClick={canEdit?()=>abrirEditor('lote',a.lote):undefined}
+                style={{fontSize:14,fontWeight:700,color:'var(--tierra)',cursor:canEdit?'pointer':undefined,borderBottom:canEdit?'1px dashed #C8A96E':undefined}}>
+                {a.lote||'Sin lote'}
+              </span>
+            )}
+            {editando==='tipo' ? (
+              <span style={{display:'inline-flex',gap:4,flexWrap:'wrap'}}>
+                {TIPOS_OPT.map(([v,l])=>(
+                  <button key={v} onClick={()=>guardarCampo('tipo_aplicacion',v)}
+                    style={{padding:'2px 8px',borderRadius:20,fontSize:10,cursor:'pointer',border:'1px solid',fontFamily:'inherit',
+                      background:a.tipo_aplicacion===v?tipoColor:'transparent',
+                      color:a.tipo_aplicacion===v?'white':tipoColor,borderColor:tipoColor}}>
+                    {l}
+                  </button>
+                ))}
+                <BtnX/>
+              </span>
+            ) : (
+              <span onClick={canEdit?()=>abrirEditor('tipo',a.tipo_aplicacion):undefined}
+                style={{fontSize:10,background:tipoBg,color:tipoColor,borderRadius:20,padding:'2px 7px',fontWeight:600,
+                  cursor:canEdit?'pointer':undefined,borderBottom:canEdit?'1px dashed '+tipoColor:undefined}}>
+                {tipoLabel}
+              </span>
+            )}
+          </div>
+
+          {/* Fecha + Superficie + Cultivos */}
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',fontSize:11,color:'var(--text-muted)'}}>
+            {editando==='fecha' ? (
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                <input autoFocus type="date" value={val} onChange={e=>setVal(e.target.value)} style={{...si,width:130}}
+                  onKeyDown={e=>{if(e.key==='Enter')guardarCampo('fecha',val);if(e.key==='Escape')cancelar()}}/>
+                <BtnOk onClick={()=>guardarCampo('fecha',val)}/><BtnX/>
+              </span>
+            ) : (
+              <span onClick={canEdit?()=>abrirEditor('fecha',a.fecha):undefined}
+                style={{fontWeight:500,cursor:canEdit?'pointer':undefined,borderBottom:canEdit?'1px dashed #C8A96E':undefined}}>
+                {fmtFecha(a.fecha)}
+              </span>
+            )}
+            ·
+            {editando==='superficie' ? (
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                <input autoFocus type="number" step="0.01" value={val} onChange={e=>setVal(e.target.value)} style={{...si,width:70}}
+                  onKeyDown={e=>{if(e.key==='Enter')guardarCampo('superficie_ha',parseFloat(val)||null);if(e.key==='Escape')cancelar()}}/>
+                <span style={{fontSize:10}}>ha</span>
+                <BtnOk onClick={()=>guardarCampo('superficie_ha',parseFloat(val)||null)}/><BtnX/>
+              </span>
+            ) : (
+              <span onClick={canEdit?()=>abrirEditor('superficie',a.superficie_ha):undefined}
+                style={{cursor:canEdit?'pointer':undefined,borderBottom:canEdit?'1px dashed #C8A96E':undefined}}>
+                {a.superficie_ha ? a.superficie_ha+' ha' : '— ha'}
+              </span>
+            )}
+            {a.cultivo_actual && <><span>·</span><span>{a.cultivo_actual}</span></>}
+            {a.cultivo_anterior && <span>(sobre {a.cultivo_anterior})</span>}
+          </div>
+
+          {/* Editor cultivos */}
+          {editando==='cultivos' && (
+            <div style={{marginTop:8,padding:'8px 10px',background:'#E4F0F4',borderRadius:8,display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
+              <div>
+                <div style={{fontSize:9,color:'#2C5A6A',textTransform:'uppercase',marginBottom:3}}>Cultivo anterior</div>
+                <select value={a.cultivo_anterior||''} style={si}
+                  onChange={e=>supabase.from('ordenes_agroquimicos').update({cultivo_anterior:e.target.value||null}).eq('id',a.id).then(()=>onRefresh())}>
+                  <option value="">—</option>
+                  {CULTIVOS_OPT.map(c=><option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:9,color:'#2C5A6A',textTransform:'uppercase',marginBottom:3}}>Cultivo actual/a sembrar</div>
+                <select value={a.cultivo_actual||''} style={si}
+                  onChange={e=>supabase.from('ordenes_agroquimicos').update({cultivo_actual:e.target.value||null}).eq('id',a.id).then(()=>onRefresh())}>
+                  <option value="">—</option>
+                  {CULTIVOS_OPT.map(c=><option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <button onClick={cancelar} style={{padding:'4px 10px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>✓ Listo</button>
+            </div>
+          )}
+        </div>
+
+        {/* Botones acción */}
+        <div style={{display:'flex',gap:4,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end',marginLeft:8}}>
+          <button onClick={()=>onPDF(a, prods)}
+            style={{padding:'4px 8px',background:'#4A7C3F',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+            📄
+          </button>
+          {canEdit && <>
+            {!a.descontado_almacen ? (
+              <button onClick={()=>onDescontar(a)} title="Descontar del almacén"
+                style={{padding:'4px 8px',background:'#7A9EAD',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                ↓
+              </button>
+            ) : (
+              <button onClick={()=>onRevertir(a)} title="Revertir descuento"
+                style={{padding:'4px 8px',background:'#EBF4E8',color:'#2E4F26',border:'1px solid #9DC87A',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                ✓
+              </button>
+            )}
+            <button onClick={()=>onDelete(a.id)}
+              style={{padding:'4px 8px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:11,cursor:'pointer',color:'#993C1D',fontFamily:'inherit'}}>
+              🗑
+            </button>
+          </>}
+        </div>
+      </div>
+
+      {/* Botones edición rápida */}
+      {canEdit && editando===null && (
+        <div style={{display:'flex',gap:4,marginBottom:10,flexWrap:'wrap'}}>
+          <EditBtn campo="fecha"      label="Fecha"      valor={a.fecha}/>
+          <EditBtn campo="lote"       label="Lote"       valor={a.lote}/>
+          <EditBtn campo="superficie" label="Sup."       valor={a.superficie_ha}/>
+          <EditBtn campo="tipo"       label="Tipo"       valor={a.tipo_aplicacion}/>
+          <EditBtn campo="cultivos"   label="Cultivos"   valor={''}/>
+          <EditBtn campo="costo"      label="Costo/ha"   valor={a.costo_ha_usd}/>
+          <EditBtn campo="obs"        label="Obs."       valor={a.observaciones}/>
+        </div>
+      )}
+
+      {/* Editor costo labor */}
+      {editando==='costo' && (
+        <div style={{marginBottom:8,display:'inline-flex',alignItems:'center',gap:6,padding:'5px 10px',background:'#FFF9EE',borderRadius:7,border:'1px solid #C8A96E'}}>
+          <span style={{fontSize:11}}>Costo labor U$S/ha:</span>
+          <input autoFocus type="number" step="0.01" value={val} onChange={e=>setVal(e.target.value)}
+            style={{...si,width:80}} placeholder="0.00"
+            onKeyDown={e=>{if(e.key==='Enter')guardarCampo('costo_ha_usd',parseFloat(val)||null);if(e.key==='Escape')cancelar()}}/>
+          <BtnOk onClick={()=>guardarCampo('costo_ha_usd',parseFloat(val)||null)}/><BtnX/>
+        </div>
+      )}
+
+      {/* Editor observaciones */}
+      {editando==='obs' && (
+        <div style={{marginBottom:8,display:'flex',alignItems:'center',gap:6,padding:'5px 10px',background:'#FFF9EE',borderRadius:7,border:'1px solid #C8A96E'}}>
+          <input autoFocus value={val} onChange={e=>setVal(e.target.value)}
+            style={{...si,flex:1}} placeholder="Observaciones..."
+            onKeyDown={e=>{if(e.key==='Enter')guardarCampo('observaciones',val);if(e.key==='Escape')cancelar()}}/>
+          <BtnOk onClick={()=>guardarCampo('observaciones',val)}/><BtnX/>
+        </div>
+      )}
+
+      {/* Productos */}
+      {prods.length > 0 && (
+        <div style={{background:'#F0F6FA',borderRadius:8,padding:'8px 12px',marginBottom:8}}>
+          <div style={{fontSize:9,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Productos — orden de carga</div>
+          {prods.map((p,i)=>{
+            const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
+            const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
+            const editandoProd = editando === p.id
+            return (
+              <div key={p.id||i} style={{padding:'5px 0',borderBottom:i<prods.length-1?'1px solid #B8D0D8':'none'}}>
+                {!editandoProd ? (
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{width:20,height:20,borderRadius:'50%',background:'#2C5A6A',color:'white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{i+1}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <span style={{fontWeight:500,color:'var(--tierra)',fontSize:12}}>{p.producto}</span>
+                      {p.marca&&<span style={{color:'var(--arcilla)',fontSize:11}}> · {p.marca}</span>}
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                      <span style={{fontSize:11,fontWeight:600}}>{p.cantidad_ha} {p.unidad}/ha</span>
+                      {p.cantidad_total&&<span style={{fontSize:10,color:'var(--text-muted)'}}>· {parseFloat(p.cantidad_total).toFixed(1)} total</span>}
+                      {precio&&<span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>U$S {(precio*parseFloat(p.cantidad_ha||0)).toFixed(2)}/ha</span>}
+                      {eiq>0&&<span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>EIQ {eiq}</span>}
+                      {canEdit&&editando===null&&(
+                        <button onClick={()=>abrirEditor(p.id, p.cantidad_ha)}
+                          style={{padding:'1px 6px',border:'1px solid #B8D0D8',borderRadius:4,fontSize:9,cursor:'pointer',background:'white',color:'#2C5A6A',fontFamily:'inherit'}}>
+                          ✏
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{background:'white',borderRadius:7,padding:'8px 10px',border:'1px solid #7A9EAD'}}>
+                    <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',marginBottom:6}}>{p.producto}{p.marca&&' · '+p.marca}</div>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+                      <div>
+                        <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Dosis/ha</div>
+                        <input autoFocus type="number" step="0.001" value={val} onChange={e=>setVal(e.target.value)}
+                          style={{...si,width:75}} placeholder="0.000"
+                          onKeyDown={e=>{if(e.key==='Escape')cancelar()}}/>
+                      </div>
+                      <div>
+                        <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>EIQ</div>
+                        <input type="number" step="0.1" defaultValue={p.eiq_unitario||p.eiq||''}
+                          style={{...si,width:58}} id={`eiq_${p.id}`} placeholder="—"/>
+                      </div>
+                      <div>
+                        <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Orden carga</div>
+                        <input type="number" defaultValue={p.orden_carga||''}
+                          style={{...si,width:48}} id={`ord_${p.id}`} placeholder={i+1}/>
+                      </div>
+                      {sup > 0 && val && (
+                        <div style={{fontSize:10,color:'var(--text-muted)',alignSelf:'flex-end',paddingBottom:4}}>
+                          → {(parseFloat(val)*sup).toFixed(1)} {p.unidad} total
+                        </div>
+                      )}
+                      <div style={{display:'flex',gap:4,alignSelf:'flex-end'}}>
+                        <button onClick={async()=>{
+                          setSaving(true)
+                          const dosis = parseFloat(val)||null
+                          const eiqEl = document.getElementById(`eiq_${p.id}`)
+                          const ordEl = document.getElementById(`ord_${p.id}`)
+                          await supabase.from('ordenes_agroquimicos_productos').update({
+                            cantidad_ha:    dosis,
+                            cantidad_total: dosis&&sup ? parseFloat((dosis*sup).toFixed(2)) : p.cantidad_total,
+                            eiq_unitario:   eiqEl?.value ? parseFloat(eiqEl.value) : null,
+                            orden_carga:    ordEl?.value ? parseInt(ordEl.value)   : null,
+                          }).eq('id', p.id)
+                          setSaving(false); setEditando(null); onRefresh()
+                        }} disabled={saving}
+                          style={{padding:'4px 10px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                          {saving?'...':'✓ Guardar'}
+                        </button>
+                        <button onClick={cancelar}
+                          style={{padding:'4px 8px',background:'#F5F0E8',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Totales */}
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+        {costoProds>0&&<div style={{background:'#EBF4E8',borderRadius:7,padding:'4px 9px',fontSize:11}}><span style={{color:'#2E4F26'}}>Prod: <strong>U$S {costoProds.toFixed(2)}/ha</strong></span></div>}
+        {costoLabor>0 ? (
+          <div onClick={canEdit&&editando===null?()=>abrirEditor('costo',a.costo_ha_usd):undefined}
+            title={canEdit?"Click para editar":undefined}
+            style={{background:'#EFECE4',borderRadius:7,padding:'4px 9px',fontSize:11,cursor:canEdit&&editando===null?'pointer':undefined}}>
+            <span style={{color:'#6B3E22'}}>Labor: <strong>U$S {costoLabor.toFixed(2)}/ha</strong></span>
+          </div>
+        ) : canEdit&&editando===null ? (
+          <button onClick={()=>abrirEditor('costo','')}
+            style={{background:'#EFECE4',borderRadius:7,padding:'4px 9px',fontSize:11,border:'1px dashed #D8C9A8',cursor:'pointer',fontFamily:'inherit',color:'var(--arcilla)'}}>
+            + Costo labor
+          </button>
+        ) : null}
+        {costoTotalHa>0&&sup>0&&<div style={{background:'#F5EDD8',borderRadius:7,padding:'4px 9px',fontSize:11}}><span style={{color:'#6B3E22'}}>Total: <strong>U$S {costoTotalHa.toFixed(2)}/ha</strong>{sup>0&&<span style={{fontWeight:400}}> · U$S {(costoTotalHa*sup).toFixed(0)}</span>}</span></div>}
+        {eiqTotal>0&&<div style={{background:'#E4F0F4',borderRadius:7,padding:'4px 9px',fontSize:11}}><span style={{color:'#2C5A6A'}}>EIQ: <strong>{eiqTotal.toFixed(0)}</strong>{sup>0&&<span style={{fontWeight:400}}> ({(eiqTotal/sup).toFixed(1)}/ha)</span>}</span></div>}
+        {a.observaciones&&editando===null&&<div style={{fontSize:11,color:'var(--text-muted)',alignSelf:'center'}}>{a.observaciones}</div>}
+      </div>
+    </div>
+  )
+}
+
 // ── Aplicaciones principal ────────────────────────────────────────────────────
 export default function Aplicaciones() {
   const { user, puedeEditar, isAdmin } = useAuth()
@@ -596,101 +909,14 @@ export default function Aplicaciones() {
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           {ordenes.map(a => {
             const prods = (prodsPorOrden[a.id]||[]).sort((x,y)=>(x.orden_carga||99)-(y.orden_carga||99))
-            const sup   = parseFloat(a.superficie_ha)||0
-            const costoLabor = parseFloat(a.costo_ha_usd)||0
-            const costoProds = prods.reduce((s,p) => {
-              const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
-              return s + (precio && p.cantidad_ha ? precio*parseFloat(p.cantidad_ha) : 0)
-            },0)
-            const costoTotalHa = costoLabor + costoProds
-            const eiqTotal = prods.reduce((s,p) => {
-              const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
-              return s + (p.cantidad_ha ? parseFloat(p.cantidad_ha)*eiq*(sup||1) : 0)
-            },0)
-
             return (
-              <div key={a.id} style={{background:'#FDFAF4',border:'1px solid #D8C9A8',borderRadius:12,padding:'14px 16px'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-                  <div>
-                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                      <span style={{fontSize:14,fontWeight:700,color:'var(--tierra)'}}>{a.lote||'Sin lote'}</span>
-                      <span style={{fontSize:10,background:a.tipo_aplicacion==='barbecho'?'#FAF5EC':a.tipo_aplicacion==='presiembra'?'#EBF4E8':'#E4F0F4',
-                        color:a.tipo_aplicacion==='barbecho'?'#6B3E22':a.tipo_aplicacion==='presiembra'?'#2E4F26':'#2C5A6A',
-                        borderRadius:20,padding:'2px 7px',fontWeight:600}}>
-                        {a.tipo_aplicacion==='barbecho'?'Barbecho':a.tipo_aplicacion==='presiembra'?'Presiembra':'Cultivo'}
-                      </span>
-                    </div>
-                    <div style={{fontSize:11,color:'var(--text-muted)'}}>
-                      {fmtFecha(a.fecha)}{a.superficie_ha&&<> · {a.superficie_ha} ha</>}
-                      {a.cultivo_actual&&<> · {a.cultivo_actual}</>}
-                      {a.cultivo_anterior&&<> (sobre {a.cultivo_anterior})</>}
-                    </div>
-                  </div>
-                  <div style={{display:'flex',gap:5,flexShrink:0}}>
-                    <button onClick={()=>generarPDF(a, prods, movsAlm)}
-                      style={{padding:'4px 9px',background:'#4A7C3F',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
-                      📄 PDF
-                    </button>
-                    {canEdit && <>
-                      {!a.descontado_almacen ? (
-                        <button onClick={()=>descontarAlmacen(a)}
-                          style={{padding:'4px 9px',background:'#7A9EAD',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
-                          ↓ Descontar almacén
-                        </button>
-                      ) : (
-                        <button onClick={()=>revertirDescuento(a)}
-                          style={{padding:'4px 9px',background:'#EBF4E8',color:'#2E4F26',border:'1px solid #9DC87A',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
-                          ✓ Descontado
-                        </button>
-                      )}
-                      <button onClick={()=>{setEditOrden(a);setShowForm(false)}}
-                        style={{padding:'4px 9px',background:'transparent',border:'1px solid var(--border)',borderRadius:6,fontSize:11,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
-                        Editar
-                      </button>
-                      <button onClick={()=>deleteOrden(a.id)}
-                        style={{padding:'4px 9px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:11,cursor:'pointer',color:'#993C1D',fontFamily:'inherit'}}>
-                        🗑
-                      </button>
-                    </>}
-                  </div>
-                </div>
-
-                {/* Productos */}
-                {prods.length > 0 && (
-                  <div style={{background:'#F0F6FA',borderRadius:8,padding:'8px 12px',marginBottom:8}}>
-                    <div style={{fontSize:9,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Productos — orden de carga</div>
-                    {prods.map((p,i)=>{
-                      const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
-                      const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
-                      return (
-                        <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:i<prods.length-1?'1px solid #B8D0D8':'none'}}>
-                          <span style={{width:20,height:20,borderRadius:'50%',background:'#2C5A6A',color:'white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{i+1}</span>
-                          <div style={{flex:1}}>
-                            <span style={{fontWeight:500,color:'var(--tierra)',fontSize:12}}>{p.producto}</span>
-                            {p.marca&&<span style={{color:'var(--arcilla)',fontSize:11}}> · {p.marca}</span>}
-                          </div>
-                          <div style={{textAlign:'right',fontSize:11}}>
-                            <span style={{fontWeight:600}}>{p.cantidad_ha} {p.unidad}/ha</span>
-                            {p.cantidad_total&&<span style={{color:'var(--text-muted)'}}> · {parseFloat(p.cantidad_total).toFixed(1)} total</span>}
-                          </div>
-                          {precio&&<span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>U$S {(precio*parseFloat(p.cantidad_ha||0)).toFixed(2)}/ha</span>}
-                          {eiq>0&&<span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>EIQ {eiq}</span>}
-                          {!precio&&p.producto&&<span style={{fontSize:10,color:'#F0997B'}}>sin precio</span>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Totales */}
-                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {costoProds>0&&<div style={{background:'#EBF4E8',borderRadius:7,padding:'5px 10px',fontSize:11}}><span style={{color:'#2E4F26'}}>Productos: <strong>U$S {costoProds.toFixed(2)}/ha</strong></span></div>}
-                  {costoLabor>0&&<div style={{background:'#EFECE4',borderRadius:7,padding:'5px 10px',fontSize:11}}><span style={{color:'#6B3E22'}}>Labor: <strong>U$S {costoLabor.toFixed(2)}/ha</strong></span></div>}
-                  {costoTotalHa>0&&sup>0&&<div style={{background:'#F5EDD8',borderRadius:7,padding:'5px 10px',fontSize:11}}><span style={{color:'#6B3E22'}}>Total: <strong>U$S {costoTotalHa.toFixed(2)}/ha · U$S {(costoTotalHa*sup).toFixed(0)} lote</strong></span></div>}
-                  {eiqTotal>0&&<div style={{background:'#E4F0F4',borderRadius:7,padding:'5px 10px',fontSize:11}}><span style={{color:'#2C5A6A'}}>EIQ: <strong>{eiqTotal.toFixed(0)}</strong>{sup>0&&<> ({(eiqTotal/sup).toFixed(1)}/ha)</>}</span></div>}
-                  {a.observaciones&&<div style={{fontSize:11,color:'var(--text-muted)',alignSelf:'center'}}>{a.observaciones}</div>}
-                </div>
-              </div>
+              <OrdenCard key={a.id} a={a} prods={prods} movsAlm={movsAlm} canEdit={canEdit} quien={quien}
+                onRefresh={fetchAll}
+                onDelete={deleteOrden}
+                onDescontar={descontarAlmacen}
+                onRevertir={revertirDescuento}
+                onPDF={(orden,ps)=>generarPDF(orden, ps, movsAlm)}
+              />
             )
           })}
         </div>
