@@ -35,9 +35,9 @@ async function buscarEiqIA(producto, marca) {
   return null
 }
 
-// ── BuscadorFactura — búsqueda en tiempo real contra Supabase ────────────────
+// ── BuscadorFactura ──────────────────────────────────────────────────────────
 function BuscadorFactura({ onSelect, onClose }) {
-  const [busq, setBusq] = useState('')
+  const [busq, setBusq] = useState(``)
   const [resultados, setResultados] = useState([])
   const [buscando, setBuscando] = useState(false)
   const inputRef = useRef()
@@ -52,7 +52,7 @@ function BuscadorFactura({ onSelect, onClose }) {
       const q = busq.trim()
       const { data } = await supabase
         .from('costos')
-        .select('id,fecha,proveedor,producto_servicio,precio_unitario_sin_iva_usd,precio_total_sin_iva,cantidad,unidad')
+        .select('id,fecha,proveedor,producto_servicio,precio_por_unidad_base,unidad_base,precio_unitario_sin_iva_usd,precio_total_sin_iva,cantidad,unidad')
         .or(`producto_servicio.ilike.%${q}%,proveedor.ilike.%${q}%`)
         .order('fecha', { ascending: false })
         .limit(40)
@@ -62,6 +62,16 @@ function BuscadorFactura({ onSelect, onClose }) {
     return () => clearTimeout(timerRef.current)
   }, [busq])
 
+  function getPrecioDisplay(c) {
+    const pBase = parseFloat(c.precio_por_unidad_base)
+    const pUnit = parseFloat(c.precio_unitario_sin_iva_usd)
+    const pTot  = parseFloat(c.precio_total_sin_iva)
+    if (pBase > 0 && c.unidad_base) return { precio: pBase, unidad: c.unidad_base, tipo: 'base' }
+    if (pUnit > 0)                  return { precio: pUnit, unidad: 'u',            tipo: 'unit' }
+    if (pTot  > 0)                  return { precio: pTot,  unidad: null,            tipo: 'total' }
+    return null
+  }
+
   return (
     <div style={{
       position:'absolute', zIndex:200, top:'calc(100% + 4px)', left:0, right:0,
@@ -70,58 +80,61 @@ function BuscadorFactura({ onSelect, onClose }) {
     }}>
       <div style={{display:'flex',gap:6,marginBottom:8}}>
         <input ref={inputRef} value={busq} onChange={e=>setBusq(e.target.value)}
-          placeholder="Buscar por producto, proveedor o fecha..."
+          placeholder='Buscar por producto, proveedor o fecha...'
           style={{flex:1,padding:'6px 10px',border:'1px solid #D8C9A8',borderRadius:6,fontSize:12,fontFamily:'inherit'}}/>
         <button onClick={onClose}
           style={{padding:'4px 8px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:11,cursor:'pointer',color:'#993C1D',fontFamily:'inherit'}}>
-          ✕
+          &#x2715;
         </button>
       </div>
       {buscando && <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Buscando...</div>}
       {!buscando && busq && resultados.length === 0 && (
-        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Sin resultados para "{busq}"</div>
+        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Sin resultados para &quot;{busq}&quot;</div>
       )}
       {!buscando && !busq && (
-        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Escribi producto, proveedor o fecha para buscar</div>
+        <div style={{padding:12,textAlign:'center',fontSize:12,color:'var(--text-muted)'}}>Escrib&#237; producto, proveedor o fecha para buscar</div>
       )}
       <div style={{maxHeight:260,overflowY:'auto',display:'flex',flexDirection:'column',gap:3}}>
-        {resultados.map(c=>(
-          <button key={c.id} onClick={()=>onSelect(c)}
-            style={{display:'flex',alignItems:'center',gap:8,padding:'7px 8px',background:'#FDFAF4',
-              border:'1px solid #E8D5A3',borderRadius:7,cursor:'pointer',textAlign:'left',fontFamily:'inherit',
-              transition:'background .1s'}}
-            onMouseEnter={e=>e.currentTarget.style.background='#F0F7EE'}
-            onMouseLeave={e=>e.currentTarget.style.background='#FDFAF4'}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:500,color:'var(--tierra)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                {c.producto_servicio}
+        {resultados.map(c=>{
+          const pd = getPrecioDisplay(c)
+          return (
+            <button key={c.id} onClick={()=>onSelect(c)}
+              style={{display:'flex',alignItems:'center',gap:8,padding:'7px 8px',background:'#FDFAF4',
+                border:'1px solid #E8D5A3',borderRadius:7,cursor:'pointer',textAlign:'left',fontFamily:'inherit'}}
+              onMouseEnter={e=>e.currentTarget.style.background='#F0F7EE'}
+              onMouseLeave={e=>e.currentTarget.style.background='#FDFAF4'}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:'var(--tierra)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {c.producto_servicio}
+                </div>
+                <div style={{fontSize:10,color:'var(--text-muted)'}}>
+                  {c.fecha} &middot; {c.proveedor||'&#8212;'}
+                  {c.cantidad && <> &middot; {fmtNum(c.cantidad,2)} {c.unidad}</>}
+                </div>
               </div>
-              <div style={{fontSize:10,color:'var(--text-muted)'}}>
-                {c.fecha} · {c.proveedor||'—'}
-              </div>
-            </div>
-            <div style={{textAlign:'right',flexShrink:0}}>
-              {c.precio_unitario_sin_iva_usd
-                ? <div style={{fontSize:12,fontWeight:700,color:'#2E4F26'}}>
-                    U$S {fmtNum(c.precio_unitario_sin_iva_usd,3)}
-                    <span style={{fontSize:10,fontWeight:400,color:'var(--text-muted)'}}>/u</span>
+              <div style={{textAlign:'right',flexShrink:0}}>
+                {pd && (
+                  <div style={{fontSize:12,fontWeight:700,color:pd.tipo==='base'?'#2E4F26':pd.tipo==='unit'?'#4A7C3F':'#6B3E22'}}>
+                    U {fmtNum(pd.precio, pd.tipo==='total'?2:4)}
+                    <span style={{fontSize:10,fontWeight:400,color:'var(--text-muted)'}}>
+                      {pd.tipo==='total'?' total':'/'+pd.unidad}
+                    </span>
                   </div>
-                : c.precio_total_sin_iva
-                  ? <div style={{fontSize:12,fontWeight:600,color:'#4A7C3F'}}>U$S {fmtNum(c.precio_total_sin_iva,2)} <span style={{fontSize:10,fontWeight:400}}>total</span></div>
-                  : null
-              }
-              {c.cantidad && (
-                <div style={{fontSize:10,color:'var(--text-muted)'}}>{fmtNum(c.cantidad,0)} {c.unidad}</div>
-              )}
-            </div>
-          </button>
-        ))}
+                )}
+                {pd?.tipo === 'base' && c.unidad_base && (
+                  <div style={{fontSize:9,color:'#2E4F26',fontWeight:600}}>precio/{c.unidad_base.toLowerCase()}</div>
+                )}
+              </div>
+            </button>
+          )
+        })}
       </div>
       <div style={{marginTop:6,fontSize:10,color:'var(--text-muted)',textAlign:'center'}}>
-        {resultados.length > 0 ? `${resultados.length} resultados${resultados.length===40?' (mostrá más términos para acotar)':''}` : ''}
+        {resultados.length > 0 ? `${resultados.length} resultados` : ``}
       </div>
     </div>
   )
+}
 }
 
 // ── FilaMov — fila editable de movimiento ─────────────────────────────────────
@@ -158,14 +171,17 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
     setShowBuscador(false)
     setForm(p => {
       const next  = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
+      const pBase = parseFloat(costo.precio_por_unidad_base) || 0
       const pUnit = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
       const pTot  = parseFloat(costo.precio_total_sin_iva)  || 0
       const cant  = parseFloat(next.cantidad) || 0
-      if (pUnit > 0) {
+      if (pBase > 0) {
+        next.precio_unitario = pBase.toFixed(4)
+        if (cant > 0) next.precio_total = (cant * pBase).toFixed(2)
+      } else if (pUnit > 0) {
         next.precio_unitario = pUnit.toFixed(4)
         if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
       } else if (pTot > 0 && cant > 0) {
-        // Sin precio/u en factura -> calculamos total_factura / cantidad_movimiento
         next.precio_unitario = (pTot / cant).toFixed(4)
         next.precio_total    = pTot.toFixed(2)
       } else if (pTot > 0) {
@@ -449,14 +465,17 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
     setFacturaVinculada(costo)
     setForm(p => {
       const next  = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
+      const pBase = parseFloat(costo.precio_por_unidad_base) || 0
       const pUnit = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
       const pTot  = parseFloat(costo.precio_total_sin_iva)  || 0
       const cant  = parseFloat(next.cantidad) || 0
-      if (pUnit > 0) {
+      if (pBase > 0) {
+        next.precio_unitario = pBase.toFixed(4)
+        if (cant > 0) next.precio_total = (cant * pBase).toFixed(2)
+      } else if (pUnit > 0) {
         next.precio_unitario = pUnit.toFixed(4)
         if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
       } else if (pTot > 0 && cant > 0) {
-        // Sin precio/u en factura -> calculamos total_factura / cantidad_movimiento
         next.precio_unitario = (pTot / cant).toFixed(4)
         next.precio_total    = pTot.toFixed(2)
       } else if (pTot > 0) {
