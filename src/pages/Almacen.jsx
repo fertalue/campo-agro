@@ -135,7 +135,6 @@ function BuscadorFactura({ onSelect, onClose }) {
     </div>
   )
 }
-}
 
 // ── FilaMov — fila editable de movimiento ─────────────────────────────────────
 function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
