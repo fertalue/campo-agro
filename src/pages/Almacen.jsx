@@ -192,8 +192,18 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
         if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
       } else if (pRawNet > 0 && isUSD) {
         // precio_unitario del item en USD (historico): 3.97 USD/L etc.
-        next.precio_unitario = pRawNet.toFixed(4)
-        if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
+        // Validar cruzando con el total: pRaw * cantidad_costos debe aproximar precio_total_sin_iva
+        const cantCosto = parseFloat(costo.cantidad) || 1
+        const totalEsperado = pRaw * cantCosto
+        const totalReal = pTot
+        const esConcordante = totalReal !== 0 && Math.abs(totalEsperado - totalReal) / Math.abs(totalReal) < 0.05
+        if (esConcordante) {
+          next.precio_unitario = pRawNet.toFixed(4)
+          if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
+        } else if (pTot > 0 && cant > 0) {
+          next.precio_unitario = (pTot / cant).toFixed(4)
+          next.precio_total    = pTot.toFixed(2)
+        }
       } else if (pTot > 0 && cant > 0) {
         // Ultimo recurso: total / cantidad del movimiento
         next.precio_unitario = (pTot / cant).toFixed(4)
@@ -498,8 +508,18 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
         if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
       } else if (pRawNet > 0 && isUSD) {
         // precio_unitario del item en USD (historico): 3.97 USD/L etc.
-        next.precio_unitario = pRawNet.toFixed(4)
-        if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
+        // Validar cruzando con el total: pRaw * cantidad_costos debe aproximar precio_total_sin_iva
+        const cantCosto = parseFloat(costo.cantidad) || 1
+        const totalEsperado = pRaw * cantCosto
+        const totalReal = pTot
+        const esConcordante = totalReal !== 0 && Math.abs(totalEsperado - totalReal) / Math.abs(totalReal) < 0.05
+        if (esConcordante) {
+          next.precio_unitario = pRawNet.toFixed(4)
+          if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
+        } else if (pTot > 0 && cant > 0) {
+          next.precio_unitario = (pTot / cant).toFixed(4)
+          next.precio_total    = pTot.toFixed(2)
+        }
       } else if (pTot > 0 && cant > 0) {
         // Ultimo recurso: total / cantidad del movimiento
         next.precio_unitario = (pTot / cant).toFixed(4)
