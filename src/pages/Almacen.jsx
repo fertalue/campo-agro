@@ -52,7 +52,7 @@ function BuscadorFactura({ onSelect, onClose }) {
       const q = busq.trim()
       const { data } = await supabase
         .from('costos')
-        .select('id,fecha,proveedor,producto_servicio,precio_por_unidad_base,unidad_base,precio_unitario_sin_iva_usd,precio_total_sin_iva,cantidad,unidad')
+        .select('id,fecha,proveedor,producto_servicio,precio_unitario,precio_por_unidad_base,unidad_base,precio_unitario_sin_iva_usd,precio_total_sin_iva,cantidad,unidad,moneda,iva_pct,iva_incluido')
         .or(`producto_servicio.ilike.%${q}%,proveedor.ilike.%${q}%`)
         .order('fecha', { ascending: false })
         .limit(40)
@@ -65,10 +65,13 @@ function BuscadorFactura({ onSelect, onClose }) {
   function getPrecioDisplay(c) {
     const pBase = parseFloat(c.precio_por_unidad_base)
     const pUnit = parseFloat(c.precio_unitario_sin_iva_usd)
+    const pRaw  = parseFloat(c.precio_unitario)
     const pTot  = parseFloat(c.precio_total_sin_iva)
-    if (pBase > 0 && c.unidad_base) return { precio: pBase, unidad: c.unidad_base, tipo: 'base' }
-    if (pUnit > 0)                  return { precio: pUnit, unidad: 'u',            tipo: 'unit' }
-    if (pTot  > 0)                  return { precio: pTot,  unidad: null,            tipo: 'total' }
+    const isUSD = (c.moneda||'').toUpperCase().includes('USD')
+    if (pBase > 0 && c.unidad_base)  return { precio: pBase, unidad: c.unidad_base, tipo: 'base' }
+    if (pUnit > 0)                   return { precio: pUnit, unidad: c.unidad_base||c.unidad||'u', tipo: 'unit' }
+    if (pRaw  > 0 && isUSD)          return { precio: pRaw,  unidad: c.unidad||'u', tipo: 'raw' }
+    if (pTot  > 0)                   return { precio: pTot,  unidad: null, tipo: 'total' }
     return null
   }
 
@@ -114,7 +117,7 @@ function BuscadorFactura({ onSelect, onClose }) {
               </div>
               <div style={{textAlign:'right',flexShrink:0}}>
                 {pd && (
-                  <div style={{fontSize:12,fontWeight:700,color:pd.tipo==='base'?'#2E4F26':pd.tipo==='unit'?'#4A7C3F':'#6B3E22'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:pd.tipo==='base'?'#2E4F26':pd.tipo==='unit'?'#4A7C3F':pd.tipo==='raw'?'#4A7C3F':'#6B3E22'}}>
                     U {fmtNum(pd.precio, pd.tipo==='total'?2:4)}
                     <span style={{fontSize:10,fontWeight:400,color:'var(--text-muted)'}}>
                       {pd.tipo==='total'?' total':'/'+pd.unidad}
@@ -170,17 +173,29 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
     setShowBuscador(false)
     setForm(p => {
       const next  = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
-      const pBase = parseFloat(costo.precio_por_unidad_base) || 0
-      const pUnit = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
-      const pTot  = parseFloat(costo.precio_total_sin_iva)  || 0
-      const cant  = parseFloat(next.cantidad) || 0
+      const pBase   = parseFloat(costo.precio_por_unidad_base) || 0
+      const pUnit   = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
+      const pRaw    = parseFloat(costo.precio_unitario) || 0
+      const pTot    = parseFloat(costo.precio_total_sin_iva) || 0
+      const isUSD   = (costo.moneda||'').toUpperCase().includes('USD')
+      const iva     = parseFloat(costo.iva_pct) || 0
+      // Si el precio ya incluye IVA, lo quitamos para tener precio neto
+      const pRawNet = costo.iva_incluido ? pRaw / (1 + iva) : pRaw
+      const cant    = parseFloat(next.cantidad) || 0
       if (pBase > 0) {
+        // precio_por_unidad_base: ya normalizado a unidad base sin IVA
         next.precio_unitario = pBase.toFixed(4)
         if (cant > 0) next.precio_total = (cant * pBase).toFixed(2)
       } else if (pUnit > 0) {
+        // precio_unitario_sin_iva_usd: calculado por el formulario de costos
         next.precio_unitario = pUnit.toFixed(4)
         if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
+      } else if (pRawNet > 0 && isUSD) {
+        // precio_unitario del item en USD (historico): 3.97 USD/L etc.
+        next.precio_unitario = pRawNet.toFixed(4)
+        if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
       } else if (pTot > 0 && cant > 0) {
+        // Ultimo recurso: total / cantidad del movimiento
         next.precio_unitario = (pTot / cant).toFixed(4)
         next.precio_total    = pTot.toFixed(2)
       } else if (pTot > 0) {
@@ -464,17 +479,29 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
     setFacturaVinculada(costo)
     setForm(p => {
       const next  = {...p, costo_id: costo.id, proveedor: costo.proveedor||p.proveedor}
-      const pBase = parseFloat(costo.precio_por_unidad_base) || 0
-      const pUnit = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
-      const pTot  = parseFloat(costo.precio_total_sin_iva)  || 0
-      const cant  = parseFloat(next.cantidad) || 0
+      const pBase   = parseFloat(costo.precio_por_unidad_base) || 0
+      const pUnit   = parseFloat(costo.precio_unitario_sin_iva_usd) || 0
+      const pRaw    = parseFloat(costo.precio_unitario) || 0
+      const pTot    = parseFloat(costo.precio_total_sin_iva) || 0
+      const isUSD   = (costo.moneda||'').toUpperCase().includes('USD')
+      const iva     = parseFloat(costo.iva_pct) || 0
+      // Si el precio ya incluye IVA, lo quitamos para tener precio neto
+      const pRawNet = costo.iva_incluido ? pRaw / (1 + iva) : pRaw
+      const cant    = parseFloat(next.cantidad) || 0
       if (pBase > 0) {
+        // precio_por_unidad_base: ya normalizado a unidad base sin IVA
         next.precio_unitario = pBase.toFixed(4)
         if (cant > 0) next.precio_total = (cant * pBase).toFixed(2)
       } else if (pUnit > 0) {
+        // precio_unitario_sin_iva_usd: calculado por el formulario de costos
         next.precio_unitario = pUnit.toFixed(4)
         if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
+      } else if (pRawNet > 0 && isUSD) {
+        // precio_unitario del item en USD (historico): 3.97 USD/L etc.
+        next.precio_unitario = pRawNet.toFixed(4)
+        if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
       } else if (pTot > 0 && cant > 0) {
+        // Ultimo recurso: total / cantidad del movimiento
         next.precio_unitario = (pTot / cant).toFixed(4)
         next.precio_total    = pTot.toFixed(2)
       } else if (pTot > 0) {
