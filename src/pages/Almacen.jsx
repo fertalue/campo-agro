@@ -373,13 +373,11 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
               </select>
             </div>
           </div>
-          <div>
-            <div style={{fontSize:9,fontWeight:600,color:'#A08060',textTransform:'uppercase',marginBottom:2}}>P. unitario</div>
-            <input type="number" step="0.001" value={form.precio_unitario||''} onChange={e=>f('precio_unitario',e.target.value)} style={{...si,width:90}} placeholder="0.000"/>
-          </div>
-          <div>
-            <div style={{fontSize:9,fontWeight:600,color:'#A08060',textTransform:'uppercase',marginBottom:2}}>Total USD</div>
-            <input type="number" step="0.01" value={form.precio_total||''} onChange={e=>f('precio_total',e.target.value)} style={{...si,width:90}} placeholder="0.00"/>
+          <div style={{flexShrink:0}}>
+            <div style={{fontSize:9,fontWeight:600,color:'#A08060',textTransform:'uppercase',marginBottom:2}}>Precio</div>
+            <div style={{padding:'5px 8px',background:form.precio_unitario?'#EBF4E8':'#F5F0E8',border:'1px solid',borderColor:form.precio_unitario?'#9DC87A':'#D8C9A8',borderRadius:5,fontSize:11,color:form.precio_unitario?'#2E4F26':'var(--text-muted)',whiteSpace:'nowrap',minWidth:90,textAlign:'right'}}>
+              {form.precio_unitario ? 'U$S '+Number(form.precio_unitario).toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4}) : 'sin precio'}
+            </div>
           </div>
           <div style={{flex:1,minWidth:100}}>
             <div style={{fontSize:9,fontWeight:600,color:'#A08060',textTransform:'uppercase',marginBottom:2}}>Proveedor</div>
@@ -469,7 +467,9 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
           ? <span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'2px 7px'}}>✓ Factura</span>
           : m.aplicacion_id
             ? <span style={{fontSize:10,background:'#FAF5EC',color:'#6B3E22',borderRadius:20,padding:'2px 7px'}}>⬇ Aplicación</span>
-            : <span style={{fontSize:10,color:'var(--text-muted)'}}>—</span>
+            : m.tipo==='compra'||m.tipo==='stock_inicial'
+              ? <span style={{fontSize:10,background:'#FFF9EE',color:'#993C1D',borderRadius:20,padding:'2px 7px',border:'1px solid #F0997B'}}>Sin factura</span>
+              : <span style={{fontSize:10,color:'var(--text-muted)'}}>&mdash;</span>
         }
       </td>
       {canEdit && (
@@ -689,14 +689,6 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
               </select>
             </div>
           </div>
-          <div className="field"><label className="label">Precio unitario (USD sin IVA)</label>
-            <input style={si} type="number" step="0.001" value={form.precio_unitario} onChange={e=>f('precio_unitario',e.target.value)} placeholder="0.000"/>
-          </div>
-        </div>
-        <div className="grid-2">
-          <div className="field"><label className="label">Precio total (USD sin IVA)</label>
-            <input style={si} type="number" step="0.01" value={form.precio_total} onChange={e=>f('precio_total',e.target.value)} placeholder="0.00"/>
-          </div>
           <div className="field"><label className="label">Proveedor</label>
             <input style={si} value={form.proveedor} onChange={e=>f('proveedor',e.target.value)} placeholder="Ej: Tecnocampo"/>
           </div>
@@ -704,18 +696,23 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
 
         {isCompra && (
           <div className="field">
-            <label className="label">Factura relacionada <span style={{fontWeight:400,color:'var(--text-muted)'}}>— trae precio unitario automáticamente</span></label>
+            <label className="label">Factura de costos <span style={{fontWeight:400,color:'#4A7C3F'}}>— el precio unitario se toma desde acá</span></label>
             <div style={{position:'relative'}}>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
                 {facturaVinculada ? (
-                  <div style={{flex:1,display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'#EBF4E8',border:'1px solid #9DC87A',borderRadius:7,fontSize:12}}>
+                  <div style={{flex:1,display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'#EBF4E8',border:'1px solid #9DC87A',borderRadius:7,fontSize:12}}>
                     <span style={{flex:1,fontWeight:500,color:'var(--tierra)'}}>{facturaVinculada.producto_servicio}</span>
                     <span style={{color:'var(--text-muted)'}}>{facturaVinculada.fecha}</span>
-                    <span style={{fontWeight:700,color:'#2E4F26'}}>U$S {fmtNum(facturaVinculada.precio_unitario_sin_iva_usd,3)}/u</span>
+                    {facturaVinculada.precio_por_unidad_base
+                      ? <span style={{fontWeight:700,color:'#2E4F26',background:'#D4EED0',borderRadius:20,padding:'2px 8px'}}>U$S {fmtNum(facturaVinculada.precio_por_unidad_base,4)}/{facturaVinculada.unidad_base}</span>
+                      : facturaVinculada.precio_unitario_sin_iva_usd
+                        ? <span style={{fontWeight:700,color:'#4A7C3F'}}>U$S {fmtNum(facturaVinculada.precio_unitario_sin_iva_usd,4)}/u</span>
+                        : <span style={{color:'#993C1D',fontSize:11}}>sin precio/u — completar en Costos</span>
+                    }
                   </div>
                 ) : (
-                  <div style={{flex:1,padding:'7px 10px',background:'#F5F0E8',border:'1px dashed #D8C9A8',borderRadius:7,fontSize:12,color:'var(--text-muted)'}}>
-                    Sin factura vinculada
+                  <div style={{flex:1,padding:'8px 12px',background:'#FFF9EE',border:'1px dashed #C8A96E',borderRadius:7,fontSize:12,color:'var(--arcilla)'}}>
+                    ⚠️ Sin factura vinculada — el movimiento no tendrá precio para la valuación
                   </div>
                 )}
                 <button type="button" onClick={()=>setShowBuscador(v=>!v)}
@@ -723,7 +720,7 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
                   🔍 Buscar factura
                 </button>
                 {facturaVinculada && (
-                  <button type="button" onClick={()=>setForm(p=>({...p,costo_id:''}))}
+                  <button type="button" onClick={()=>{setForm(p=>({...p,costo_id:''}));setFacturaVinculada(null)}}
                     style={{padding:'7px 10px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:7,fontSize:12,cursor:'pointer',color:'#993C1D'}}>
                     ✕
                   </button>
