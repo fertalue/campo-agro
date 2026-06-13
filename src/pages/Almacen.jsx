@@ -266,7 +266,7 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
 
       if (puFactura > 0) {
         // Convertir precio a la unidad del movimiento (ej: USD/kg → USD/g)
-        const unidadMov = next.unidad || '
+        const unidadMov = next.unidad || ''
         const puConvertido = convertirPrecio(puFactura, unidadFactura, unidadMov)
         next.precio_unitario = puConvertido.toFixed(6).replace(/\.?0+$/, "")
         if (cant > 0) next.precio_total = (cant * puConvertido).toFixed(2)
@@ -578,7 +578,7 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
 
       if (puFactura > 0) {
         // Convertir precio a la unidad del movimiento (ej: USD/kg → USD/g)
-        const unidadMov = next.unidad || '
+        const unidadMov = next.unidad || ''
         const puConvertido = convertirPrecio(puFactura, unidadFactura, unidadMov)
         next.precio_unitario = puConvertido.toFixed(6).replace(/\.?0+$/, "")
         if (cant > 0) next.precio_total = (cant * puConvertido).toFixed(2)
