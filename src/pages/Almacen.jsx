@@ -72,25 +72,73 @@ function convertirPrecio(precio, unidadOrigen, unidadDestino) {
   return (parseFloat(precio)||0) / fo * fd
 }
 
-// ── Precio promedio ponderado con conversión de unidades ────────────────────────────
-function getPrecioPromedio(movs) {
-  const entradas = movs.filter(m =>
-    (m.tipo==='compra'||m.tipo==='stock_inicial') && m.precio_unitario && parseFloat(m.cantidad)>0
-  )
-  // Normalizar todo a precio/unidad_base para el promedio ponderado
-  let totalValorBase = 0, totalCantBase = 0
-  entradas.forEach(m => {
+// ── FIFO: valuação do stock pelo método PEPS ──────────────────────────────────────
+// Procesa movimientos cronológicamente consumiendo lotes más antiguos primero.
+// Retorna: cantBase, valorStock, precioMedio (de lotes restantes), precioUltimo
+function calcularFIFO(movs) {
+  // Ordenar por fecha ascendente (más antiguo primero)
+  const sorted = [...movs].sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
+
+  // Cola de lotes: [{qty, precio}] todos en unidad base (kg/L)
+  const lotes = []
+
+  sorted.forEach(m => {
     const norm = aBase(m.cantidad, m.unidad)
     const fo   = factorABase(m.unidad)
-    // precio_por_base = precio_por_unidad / factor
-    // Ej: 33 USD/kg, factor=1 → 33 USD/kg
-    // Ej: 0.033 USD/g, factor=0.001 → 33 USD/kg
-    const precioBase = (parseFloat(m.precio_unitario)||0) / fo
-    totalCantBase += norm.qty
-    totalValorBase += precioBase * norm.qty
+    const pu   = parseFloat(m.precio_unitario) || 0
+
+    if (m.tipo === 'compra' || m.tipo === 'stock_inicial') {
+      // Entrada: agregar lote con precio normalizado a unidad base
+      const precioBase = pu > 0 ? pu / fo : null
+      lotes.push({ qty: norm.qty, precio: precioBase })
+
+    } else if (m.tipo === 'salida_aplicacion') {
+      // Salida: consumir desde el lote más antiguo (FIFO)
+      let porConsumir = Math.abs(norm.qty)
+      while (porConsumir > 1e-9 && lotes.length > 0) {
+        if (lotes[0].qty <= porConsumir + 1e-9) {
+          porConsumir -= lotes[0].qty
+          lotes.shift()
+        } else {
+          lotes[0].qty -= porConsumir
+          porConsumir = 0
+        }
+      }
+
+    } else if (m.tipo === 'ajuste') {
+      const cantAdj = norm.qty  // puede ser positivo o negativo
+      if (cantAdj > 0) {
+        lotes.push({ qty: cantAdj, precio: null })  // ajuste positivo sin precio
+      } else {
+        let porConsumir = Math.abs(cantAdj)
+        while (porConsumir > 1e-9 && lotes.length > 0) {
+          if (lotes[0].qty <= porConsumir + 1e-9) {
+            porConsumir -= lotes[0].qty
+            lotes.shift()
+          } else {
+            lotes[0].qty -= porConsumir
+            porConsumir = 0
+          }
+        }
+      }
+    }
   })
-  // Retorna precio en la unidad base (USD/kg o USD/L)
-  return totalCantBase > 0 ? totalValorBase / totalCantBase : null
+
+  // Calcular resultados desde los lotes restantes
+  const cantBase      = lotes.reduce((s,l) => s + l.qty, 0)
+  const lotesConPrecio = lotes.filter(l => l.precio != null && l.qty > 1e-9)
+  const valorStock    = lotesConPrecio.reduce((s,l) => s + l.qty * l.precio, 0)
+  const cantConPrecio = lotesConPrecio.reduce((s,l) => s + l.qty, 0)
+
+  // Precio medio ponderado de los lotes que QUEDAN en stock (no el histórico completo)
+  // Esto evoluciona hacia los precios actuales a medida que se consumen lotes viejos
+  const precioMedio = cantConPrecio > 0 ? valorStock / cantConPrecio : null
+
+  // Precio del último lote con stock y precio (precio de mercado más reciente)
+  const ultimoLote  = [...lotesConPrecio].reverse()[0]
+  const precioUltimo = ultimoLote?.precio || null
+
+  return { cantBase, valorStock, precioMedio, precioUltimo, lotes }
 }
 
 async function buscarEiqIA(producto, marca) {
@@ -752,9 +800,15 @@ export default function Almacen() {
 
   const stockRows = Object.entries(stockPorProducto)
     .map(([k,v]) => {
-      const precioMedio = getPrecioPromedio(v.movs)  // USD/unidad_base
-      const valorStock  = precioMedio && v.cantBase > 0 ? precioMedio * v.cantBase : null
-      return { key:k, ...v, cantidad:v.cantBase, unidad:v.baseUnit, precioMedio, valorStock }
+      const fifo = calcularFIFO(v.movs)
+      return {
+        key: k, ...v,
+        cantidad:     fifo.cantBase,
+        unidad:       v.baseUnit,
+        precioMedio:  fifo.precioMedio,   // promedio ponderado de lotes restantes (FIFO)
+        precioUltimo: fifo.precioUltimo,  // precio del lote más reciente en stock
+        valorStock:   fifo.valorStock,    // valor exacto = Σ(lote.qty × lote.precio)
+      }
     })
     .sort((a,b)=>a.producto.localeCompare(b.producto))
     .filter(r=>!fProd||r.producto.toLowerCase().includes(fProd.toLowerCase())||r.marca?.toLowerCase().includes(fProd.toLowerCase()))
@@ -871,8 +925,13 @@ export default function Almacen() {
                         {r.cantidad<=0&&<div style={{fontSize:11,color:'#993C1D',fontWeight:600}}>⚠ Sin stock</div>}
                       </div>
                       <div style={{textAlign:'right'}}>
-                        {r.precioMedio&&<div style={{fontSize:11,color:'var(--text-muted)'}}>U$S {fmtNum(r.precioMedio,3)}/{r.unidad}</div>}
-                        {r.valorStock&&r.cantidad>0&&<div style={{fontSize:13,fontWeight:600,color:'#2E4F26'}}>U$S {fmtNum(r.valorStock,0)}</div>}
+                        {r.precioUltimo && (
+                          <div style={{fontSize:10,color:'#4A7C3F',fontWeight:600}}>U$S {fmtNum(r.precioUltimo,2)}/{r.unidad} <span style={{fontWeight:400,color:'var(--text-muted)'}}>(última compra)</span></div>
+                        )}
+                        {r.precioMedio && r.precioMedio !== r.precioUltimo && (
+                          <div style={{fontSize:10,color:'var(--text-muted)'}}>U$S {fmtNum(r.precioMedio,2)}/{r.unidad} (promedio FIFO)</div>
+                        )}
+                        {r.valorStock > 0 && <div style={{fontSize:13,fontWeight:600,color:'#2E4F26'}}>U$S {fmtNum(r.valorStock,0)}</div>}
                       </div>
                     </div>
                   </div>
