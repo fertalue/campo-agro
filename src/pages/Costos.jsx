@@ -1020,7 +1020,7 @@ export default function Costos({ dolares }) {
               : filteredDetalle.length === 0 ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Sin registros con estos filtros</div>
                 : <table className="c-tbl">
                   <thead><tr>
-                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th><th style={{whiteSpace:'nowrap'}}>P. unitario</th><th>Unidad</th>
+                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th><th style={{whiteSpace:'nowrap'}}>P. unitario</th><th>Unidad</th><th style={{textAlign:'right'}}>Cantidad</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
                     <th>Sin IVA (USD)</th><th>IVA (USD)</th><th>Con IVA (USD)</th><th>Otros imp. (USD)</th><th>Total (USD)</th>
                     <th>Sin IVA (ARS)</th><th>Con IVA (ARS)</th><th>Otros imp. (ARS)</th><th>Total (ARS)</th>
@@ -1074,6 +1074,7 @@ export default function Costos({ dolares }) {
                           <td style={{ color: 'var(--suelo)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.producto_servicio}</td>
                           <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', color:'var(--musgo)', fontSize:11 }}>{c.precio_unitario ? Number(c.precio_unitario).toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '\u2014'}</td>
                           <td style={{ color:'var(--text-muted)', fontSize:11, whiteSpace:'nowrap' }}>{c.unidad||'\u2014'}</td>
+                          <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', fontSize:11, textAlign:'right', color:'var(--suelo)' }}>{c.cantidad ? Number(c.cantidad).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:4}) : '\u2014'}</td>
                           <td><span className="cc chip-muted" style={{ whiteSpace: 'nowrap' }}>{c.centro_costos}</span></td>
                           <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.factura_numero || '—'}</td>
                           <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
