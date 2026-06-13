@@ -565,7 +565,7 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
       const cant    = parseFloat(next.cantidad) || 0
       // Precio unitario base desde la factura (en la unidad del item de costos)
       let puFactura = 0
-      const unidadFactura = costo.unidad || costo.unidad_base || '
+      const unidadFactura = costo.unidad || costo.unidad_base || ''
       if (pBase > 0) {
         puFactura = pBase  // ya en unidad base (kg, L)
       } else if (pUnit > 0) {
