@@ -6,6 +6,37 @@ const UNIDADES = ['L','cc','kg','g','unidad']
 const TIPO_MOV = { stock_inicial:'Stock inicial', compra:'Compra', salida_aplicacion:'Salida aplicación', ajuste:'Ajuste' }
 const COL_MOV  = { stock_inicial:'#7A9EAD', compra:'#4A7C3F', salida_aplicacion:'#C8A96E', ajuste:'#A08060' }
 
+// ── Conversión de unidades ───────────────────────────────────────────────────────────────
+// Cada entrada: [unidadBase, factorParaConvertirABase]
+// Ej: 'g' -> base 'kg', factor 0.001 => 1g = 0.001 kg
+const UNIT_MAP = {
+  // Volumen → L
+  'l':      { base: 'L',  factor: 1      },
+  'lts':    { base: 'L',  factor: 1      },
+  'litros': { base: 'L',  factor: 1      },
+  'lt':     { base: 'L',  factor: 1      },
+  'cc':     { base: 'L',  factor: 0.001  },
+  'cm3':    { base: 'L',  factor: 0.001  },
+  'ml':     { base: 'L',  factor: 0.001  },
+  // Peso → kg
+  'kg':     { base: 'kg', factor: 1      },
+  'kgs':    { base: 'kg', factor: 1      },
+  'kilos':  { base: 'kg', factor: 1      },
+  'g':      { base: 'kg', factor: 0.001  },
+  'gr':     { base: 'kg', factor: 0.001  },
+  'grs':    { base: 'kg', factor: 0.001  },
+  'gramos': { base: 'kg', factor: 0.001  },
+  'tn':     { base: 'kg', factor: 1000   },
+  'ton':    { base: 'kg', factor: 1000   },
+  // Conteo
+  'unidad': { base: 'unidad', factor: 1  },
+  'u':      { base: 'unidad', factor: 1  },
+}
+
+function normalizarUnidad(u) {
+  return (u || '').toLowerCase().trim().replace('.', '')
+}
+
 function fmtFecha(f) {
   if (!f) return '—'
   return new Date(f+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'})
@@ -15,13 +46,51 @@ function fmtNum(v, dec=0) {
   return Number(v).toLocaleString('es-AR',{minimumFractionDigits:dec,maximumFractionDigits:dec})
 }
 
+// Convierte cantidad a la unidad base (kg, L, unidad)
+function aBase(cantidad, unidad) {
+  const def = UNIT_MAP[normalizarUnidad(unidad)]
+  if (!def) return { qty: parseFloat(cantidad)||0, base: unidad || '' }
+  return { qty: (parseFloat(cantidad)||0) * def.factor, base: def.base }
+}
+
+// Factor de conversión de una unidad a su base (ej: 'g' → 0.001)
+function factorABase(unidad) {
+  return UNIT_MAP[normalizarUnidad(unidad)]?.factor || 1
+}
+
+// Convierte precio por unidad origen a precio por unidad destino
+// Ej: 33 USD/kg + destino='g'  → 0.033 USD/g
+function convertirPrecio(precio, unidadOrigen, unidadDestino) {
+  const fo = factorABase(unidadOrigen)   // kg: 1, g: 0.001
+  const fd = factorABase(unidadDestino)  // kg: 1, g: 0.001
+  const defO = UNIT_MAP[normalizarUnidad(unidadOrigen)]
+  const defD = UNIT_MAP[normalizarUnidad(unidadDestino)]
+  // Solo convertir si son de la misma familia (peso<->peso, vol<->vol)
+  if (!defO || !defD || defO.base !== defD.base) return parseFloat(precio)||0
+  // precio_base = precio / fo  (precio por unidad base)
+  // precio_destino = precio_base * fd
+  return (parseFloat(precio)||0) / fo * fd
+}
+
+// ── Precio promedio ponderado con conversión de unidades ────────────────────────────
 function getPrecioPromedio(movs) {
   const entradas = movs.filter(m =>
     (m.tipo==='compra'||m.tipo==='stock_inicial') && m.precio_unitario && parseFloat(m.cantidad)>0
   )
-  const totalCant  = entradas.reduce((a,m) => a + parseFloat(m.cantidad),  0)
-  const totalValor = entradas.reduce((a,m) => a + parseFloat(m.precio_unitario) * parseFloat(m.cantidad), 0)
-  return totalCant>0 ? totalValor/totalCant : null
+  // Normalizar todo a precio/unidad_base para el promedio ponderado
+  let totalValorBase = 0, totalCantBase = 0
+  entradas.forEach(m => {
+    const norm = aBase(m.cantidad, m.unidad)
+    const fo   = factorABase(m.unidad)
+    // precio_por_base = precio_por_unidad / factor
+    // Ej: 33 USD/kg, factor=1 → 33 USD/kg
+    // Ej: 0.033 USD/g, factor=0.001 → 33 USD/kg
+    const precioBase = (parseFloat(m.precio_unitario)||0) / fo
+    totalCantBase += norm.qty
+    totalValorBase += precioBase * norm.qty
+  })
+  // Retorna precio en la unidad base (USD/kg o USD/L)
+  return totalCantBase > 0 ? totalValorBase / totalCantBase : null
 }
 
 async function buscarEiqIA(producto, marca) {
@@ -182,31 +251,27 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
       // Si el precio ya incluye IVA, lo quitamos para tener precio neto
       const pRawNet = costo.iva_incluido ? pRaw / (1 + iva) : pRaw
       const cant    = parseFloat(next.cantidad) || 0
+      // Precio unitario base desde la factura (en la unidad del item de costos)
+      let puFactura = 0
+      const unidadFactura = costo.unidad || costo.unidad_base || '
       if (pBase > 0) {
-        // precio_por_unidad_base: ya normalizado a unidad base sin IVA
-        next.precio_unitario = pBase.toFixed(4)
-        if (cant > 0) next.precio_total = (cant * pBase).toFixed(2)
+        puFactura = pBase  // ya en unidad base (kg, L)
       } else if (pUnit > 0) {
-        // precio_unitario_sin_iva_usd: calculado por el formulario de costos
-        next.precio_unitario = pUnit.toFixed(4)
-        if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
+        puFactura = pUnit
       } else if (pRawNet > 0 && isUSD) {
-        // precio_unitario del item en USD (historico): 3.97 USD/L etc.
-        // Validar cruzando con el total: pRaw * cantidad_costos debe aproximar precio_total_sin_iva
-        const cantCosto = parseFloat(costo.cantidad) || 1
-        const totalEsperado = pRaw * cantCosto
-        const totalReal = pTot
-        const esConcordante = totalReal !== 0 && Math.abs(totalEsperado - totalReal) / Math.abs(totalReal) < 0.05
-        if (esConcordante) {
-          next.precio_unitario = pRawNet.toFixed(4)
-          if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
-        } else if (pTot > 0 && cant > 0) {
-          next.precio_unitario = (pTot / cant).toFixed(4)
-          next.precio_total    = pTot.toFixed(2)
-        }
+        const cantCosto    = parseFloat(costo.cantidad) || 1
+        const esConcordante = pTot !== 0 && Math.abs(pRawNet * cantCosto - pTot) / Math.abs(pTot) < 0.05
+        puFactura = esConcordante ? pRawNet : 0
+      }
+
+      if (puFactura > 0) {
+        // Convertir precio a la unidad del movimiento (ej: USD/kg → USD/g)
+        const unidadMov = next.unidad || '
+        const puConvertido = convertirPrecio(puFactura, unidadFactura, unidadMov)
+        next.precio_unitario = puConvertido.toFixed(6).replace(/\.?0+$/, "")
+        if (cant > 0) next.precio_total = (cant * puConvertido).toFixed(2)
       } else if (pTot > 0 && cant > 0) {
-        // Ultimo recurso: total / cantidad del movimiento
-        next.precio_unitario = (pTot / cant).toFixed(4)
+        next.precio_unitario = (pTot / cant).toFixed(6).replace(/\.?0+$/, "")
         next.precio_total    = pTot.toFixed(2)
       } else if (pTot > 0) {
         next.precio_total = pTot.toFixed(2)
@@ -498,31 +563,27 @@ function FormMovimiento({ tipo, productos, quienRegistra, onSave, onCancel }) {
       // Si el precio ya incluye IVA, lo quitamos para tener precio neto
       const pRawNet = costo.iva_incluido ? pRaw / (1 + iva) : pRaw
       const cant    = parseFloat(next.cantidad) || 0
+      // Precio unitario base desde la factura (en la unidad del item de costos)
+      let puFactura = 0
+      const unidadFactura = costo.unidad || costo.unidad_base || '
       if (pBase > 0) {
-        // precio_por_unidad_base: ya normalizado a unidad base sin IVA
-        next.precio_unitario = pBase.toFixed(4)
-        if (cant > 0) next.precio_total = (cant * pBase).toFixed(2)
+        puFactura = pBase  // ya en unidad base (kg, L)
       } else if (pUnit > 0) {
-        // precio_unitario_sin_iva_usd: calculado por el formulario de costos
-        next.precio_unitario = pUnit.toFixed(4)
-        if (cant > 0) next.precio_total = (cant * pUnit).toFixed(2)
+        puFactura = pUnit
       } else if (pRawNet > 0 && isUSD) {
-        // precio_unitario del item en USD (historico): 3.97 USD/L etc.
-        // Validar cruzando con el total: pRaw * cantidad_costos debe aproximar precio_total_sin_iva
-        const cantCosto = parseFloat(costo.cantidad) || 1
-        const totalEsperado = pRaw * cantCosto
-        const totalReal = pTot
-        const esConcordante = totalReal !== 0 && Math.abs(totalEsperado - totalReal) / Math.abs(totalReal) < 0.05
-        if (esConcordante) {
-          next.precio_unitario = pRawNet.toFixed(4)
-          if (cant > 0) next.precio_total = (cant * pRawNet).toFixed(2)
-        } else if (pTot > 0 && cant > 0) {
-          next.precio_unitario = (pTot / cant).toFixed(4)
-          next.precio_total    = pTot.toFixed(2)
-        }
+        const cantCosto    = parseFloat(costo.cantidad) || 1
+        const esConcordante = pTot !== 0 && Math.abs(pRawNet * cantCosto - pTot) / Math.abs(pTot) < 0.05
+        puFactura = esConcordante ? pRawNet : 0
+      }
+
+      if (puFactura > 0) {
+        // Convertir precio a la unidad del movimiento (ej: USD/kg → USD/g)
+        const unidadMov = next.unidad || '
+        const puConvertido = convertirPrecio(puFactura, unidadFactura, unidadMov)
+        next.precio_unitario = puConvertido.toFixed(6).replace(/\.?0+$/, "")
+        if (cant > 0) next.precio_total = (cant * puConvertido).toFixed(2)
       } else if (pTot > 0 && cant > 0) {
-        // Ultimo recurso: total / cantidad del movimiento
-        next.precio_unitario = (pTot / cant).toFixed(4)
+        next.precio_unitario = (pTot / cant).toFixed(6).replace(/\.?0+$/, "")
         next.precio_total    = pTot.toFixed(2)
       } else if (pTot > 0) {
         next.precio_total = pTot.toFixed(2)
@@ -675,22 +736,25 @@ export default function Almacen() {
   // Stock y valorización
   const stockPorProducto = {}
   movs.forEach(m => {
-    // Agrupar siempre por nombre+marca para evitar splits cuando
-    // algunos movimientos tienen producto_id y otros no
     const key = (m.producto + '|' + (m.marca||'')).toUpperCase()
-    if (!stockPorProducto[key]) stockPorProducto[key] = {producto:m.producto,marca:m.marca,unidad:m.unidad,cantidad:0,movs:[],producto_id:m.producto_id}
+    if (!stockPorProducto[key]) stockPorProducto[key] = {
+      producto:m.producto, marca:m.marca,
+      cantBase:0, baseUnit:'', movs:[], producto_id:m.producto_id
+    }
     const s    = stockPorProducto[key]
-    const cant = parseFloat(m.cantidad) || 0
-    if (m.tipo === 'salida_aplicacion') { s.cantidad -= Math.abs(cant) }
-    else { s.cantidad += cant }  // ajustes negativos ya traen su signo
+    const norm = aBase(m.cantidad, m.unidad)
+    if (!s.baseUnit) s.baseUnit = norm.base
+    const esSalida = m.tipo === 'salida_aplicacion'
+    if (esSalida) { s.cantBase -= Math.abs(norm.qty) }
+    else          { s.cantBase += norm.qty }
     s.movs.push(m)
   })
 
   const stockRows = Object.entries(stockPorProducto)
-    .map(([k,v])=>{
-      const precioMedio=getPrecioPromedio(v.movs)
-      const valorStock=precioMedio&&v.cantidad>0?precioMedio*v.cantidad:null
-      return {key:k,...v,precioMedio,valorStock}
+    .map(([k,v]) => {
+      const precioMedio = getPrecioPromedio(v.movs)  // USD/unidad_base
+      const valorStock  = precioMedio && v.cantBase > 0 ? precioMedio * v.cantBase : null
+      return { key:k, ...v, cantidad:v.cantBase, unidad:v.baseUnit, precioMedio, valorStock }
     })
     .sort((a,b)=>a.producto.localeCompare(b.producto))
     .filter(r=>!fProd||r.producto.toLowerCase().includes(fProd.toLowerCase())||r.marca?.toLowerCase().includes(fProd.toLowerCase()))
