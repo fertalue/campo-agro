@@ -161,6 +161,18 @@ h3 { font-size: 1rem;   font-weight: 600; color: var(--tierra); }
 .mb-2   { margin-bottom: 16px; }
 .mb-3   { margin-bottom: 24px; }
 
+/* Numeric alignment — campos numéricos siempre a la derecha */
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+input[type="number"] { text-align: right; }
+
+/* Columnas numéricas en tablas: cualquier td/th con font monospace alinea a la derecha */
+td[style*="monospace"],
+th[style*="monospace"] { text-align: right !important; }
+
+/* textAlign right en style inline también aplica */
+th[style*="right"],
+td[style*="right"] { text-align: right; }
+
 /* Responsive breakpoints */
 @media (max-width: 768px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
