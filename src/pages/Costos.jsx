@@ -1072,7 +1072,7 @@ export default function Costos({ dolares }) {
                           <td><span className="cc chip-muted" style={{ whiteSpace:'nowrap', background: c.concepto==='NC'?'#E4F0F4':c.concepto==='ND'?'#F5EDD8':'#EFECE4', color: c.concepto==='NC'?'#2C5A6A':c.concepto==='ND'?'#6B3E22':'#7A6040' }}>{c.concepto||'Compra'}</span></td>
                           <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{c.proveedor}</td>
                           <td style={{ color: 'var(--suelo)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.producto_servicio}</td>
-                          <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', color:'var(--musgo)', fontSize:11 }}>{c.precio_unitario ? Number(c.precio_unitario).toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '\u2014'}</td>
+                          <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', color:'var(--musgo)', fontSize:11 }}>{c.precio_unitario ? Number(c.precio_unitario).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '\u2014'}</td>
                           <td style={{ color:'var(--text-muted)', fontSize:11, whiteSpace:'nowrap' }}>{c.unidad||'\u2014'}</td>
                           <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', fontSize:11, textAlign:'right', color:'var(--suelo)' }}>{c.cantidad ? Number(c.cantidad).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1}) : '\u2014'}</td>
                           <td><span className="cc chip-muted" style={{ whiteSpace: 'nowrap' }}>{c.centro_costos}</span></td>
