@@ -1074,7 +1074,7 @@ export default function Costos({ dolares }) {
                           <td style={{ color: 'var(--suelo)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.producto_servicio}</td>
                           <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', color:'var(--musgo)', fontSize:11 }}>{c.precio_unitario ? Number(c.precio_unitario).toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '\u2014'}</td>
                           <td style={{ color:'var(--text-muted)', fontSize:11, whiteSpace:'nowrap' }}>{c.unidad||'\u2014'}</td>
-                          <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', fontSize:11, textAlign:'right', color:'var(--suelo)' }}>{c.cantidad ? Number(c.cantidad).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:4}) : '\u2014'}</td>
+                          <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', fontSize:11, textAlign:'right', color:'var(--suelo)' }}>{c.cantidad ? Number(c.cantidad).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1}) : '\u2014'}</td>
                           <td><span className="cc chip-muted" style={{ whiteSpace: 'nowrap' }}>{c.centro_costos}</span></td>
                           <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.factura_numero || '—'}</td>
                           <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
