@@ -477,7 +477,11 @@ function DividirProducto({ prod, sup, ordenId, descontado, quien, onSave, onCanc
     }
     if (descontado) {
       const hoy = new Date().toISOString().split('T')[0]
-      await supabase.from('almacen_movimientos').delete().eq('aplicacion_id', ordenId).eq('producto', prod.producto)
+      // Borrar TODOS los movimientos de este producto en esta orden (cualquier marca)
+      await supabase.from('almacen_movimientos')
+        .delete()
+        .eq('aplicacion_id', ordenId)
+        .ilike('producto', prod.producto)
       if (parseFloat(cant1) > 0) await supabase.from('almacen_movimientos').insert({
         fecha: hoy, tipo: 'salida_aplicacion', producto: prod.producto, marca: marca1,
         cantidad: parseFloat(cant1), unidad: prod.unidad, aplicacion_id: ordenId, quien_registro: quien, observaciones: 'División de marcas'
