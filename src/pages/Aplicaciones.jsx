@@ -199,9 +199,6 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
                 {CULTIVOS.map(c=><option key={c}>{c}</option>)}
               </select>
             </div>
-          </div>
-        )}
-        {form.tipo_aplicacion==='cultivo' && (
           <div className="field"><label className="label">Cultivo en pie</label>
             <div style={{display:'flex',gap:8}}>
               {CULTIVOS.map(c=>(
@@ -450,6 +447,91 @@ ${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#
   const w = window.open('','_blank'); w.document.write(html); w.document.close()
 }
 
+// ── DividirProducto ─────────────────────────────────────────────────────────
+function DividirProducto({ prod, sup, ordenId, descontado, quien, onSave, onCancel }) {
+  const total = parseFloat(prod.cantidad_total) || 0
+  const [marca1, setMarca1] = useState(prod.marca || ')
+  const [cant1,  setCant1]  = useState(total)
+  const [marca2, setMarca2] = useState('')
+  const [cant2,  setCant2]  = useState(0)
+  const [saving, setSaving] = useState(false)
+  const si = {padding:'5px 8px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:12,fontFamily:'inherit',background:'white'}
+  const suma = parseFloat(cant1||0) + parseFloat(cant2||0)
+  const ok   = Math.abs(suma - total) < 0.01
+
+  async function save() {
+    if (!ok) { alert(`La suma (${suma.toFixed(1)}) debe ser ${total} ${prod.unidad}`); return }
+    setSaving(true)
+    const dosis1 = sup > 0 ? parseFloat(cant1)/sup : 0
+    const dosis2 = sup > 0 ? parseFloat(cant2)/sup : 0
+    await supabase.from('ordenes_agroquimicos_productos').update({
+      marca: marca1, cantidad_ha: parseFloat(dosis1.toFixed(4)), cantidad_total: parseFloat(cant1)
+    }).eq('id', prod.id)
+    if (parseFloat(cant2) > 0 && marca2) {
+      await supabase.from('ordenes_agroquimicos_productos').insert({
+        orden_id: ordenId, producto: prod.producto, marca: marca2,
+        cantidad_ha: parseFloat(dosis2.toFixed(4)), cantidad_total: parseFloat(cant2),
+        unidad: prod.unidad, orden_carga: prod.orden_carga, eiq_unitario: prod.eiq_unitario || null,
+      })
+    }
+    if (descontado) {
+      const hoy = new Date().toISOString().split('T')[0]
+      await supabase.from('almacen_movimientos').delete().eq('aplicacion_id', ordenId).eq('producto', prod.producto)
+      if (parseFloat(cant1) > 0) await supabase.from('almacen_movimientos').insert({
+        fecha: hoy, tipo: 'salida_aplicacion', producto: prod.producto, marca: marca1,
+        cantidad: parseFloat(cant1), unidad: prod.unidad, aplicacion_id: ordenId, quien_registro: quien, observaciones: 'División de marcas'
+      })
+      if (parseFloat(cant2) > 0 && marca2) await supabase.from('almacen_movimientos').insert({
+        fecha: hoy, tipo: 'salida_aplicacion', producto: prod.producto, marca: marca2,
+        cantidad: parseFloat(cant2), unidad: prod.unidad, aplicacion_id: ordenId, quien_registro: quien, observaciones: 'División de marcas'
+      })
+    }
+    setSaving(false); onSave()
+  }
+
+  return (
+    <div style={{marginTop:8,padding:'10px 12px',background:'#E4F0F4',borderRadius:8,border:'1px solid #7A9EAD'}}>
+      <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',marginBottom:8}}>
+        ✂ Dividir {prod.producto} — Total: {total} {prod.unidad}
+        {descontado && <span style={{marginLeft:8,color:'#993C1D',fontSize:9}}>⚠ actualiza almacén automáticamente</span>}
+      </div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end',marginBottom:6}}>
+        <div>
+          <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Marca 1</div>
+          <input value={marca1} onChange={e=>setMarca1(e.target.value)} style={{...si,width:110}} placeholder='Ej: TRASPECT'/>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Cant. 1 ({prod.unidad})</div>
+          <input type='number' step='0.1' value={cant1} onChange={e=>setCant1(e.target.value)} style={{...si,width:80}}/>
+        </div>
+        <div style={{alignSelf:'center',fontSize:13,color:'var(--text-muted)',paddingBottom:2}}>+</div>
+        <div>
+          <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Marca 2</div>
+          <input value={marca2} onChange={e=>setMarca2(e.target.value)} style={{...si,width:110}} placeholder='Ej: SELECT'/>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Cant. 2 ({prod.unidad})</div>
+          <input type='number' step='0.1' value={cant2} onChange={e=>setCant2(e.target.value)} style={{...si,width:80}}/>
+        </div>
+        <div style={{alignSelf:'center',paddingBottom:2}}>
+          <div style={{fontSize:11,fontWeight:700,color:ok?'#2E4F26':'#993C1D'}}>{suma.toFixed(1)} / {total} {prod.unidad}</div>
+          {!ok&&<div style={{fontSize:9,color:'#993C1D'}}>deben sumar {total}</div>}
+        </div>
+      </div>
+      {sup>0&&<div style={{fontSize:10,color:'var(--text-muted)',marginBottom:8}}>
+        Dosis: {cant1&&sup?(parseFloat(cant1)/sup).toFixed(4):0} / {cant2&&sup?(parseFloat(cant2)/sup).toFixed(4):0} {prod.unidad}/ha
+      </div>}
+      <div style={{display:'flex',gap:6}}>
+        <button onClick={save} disabled={saving||!ok} style={{padding:'5px 12px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+          {saving?'Guardando...':'✂ Confirmar división'}
+        </button>
+        <button onClick={onCancel} style={{padding:'5px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ── OrdenCard — tarjeta con edición inline campo por campo ────────────────────
 function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onDescontar, onRevertir, onPDF }) {
@@ -662,6 +744,7 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
             const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
             const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
             const editandoProd = editando === p.id
+            const dividiendo   = editando === 'dividir_'+p.id
             return (
               <div key={p.id||i} style={{padding:'5px 0',borderBottom:i<prods.length-1?'1px solid #B8D0D8':'none'}}>
                 {!editandoProd ? (
@@ -686,8 +769,13 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
                   </div>
                 ) : (
                   <div style={{background:'white',borderRadius:7,padding:'8px 10px',border:'1px solid #7A9EAD'}}>
-                    <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',marginBottom:6}}>{p.producto}{p.marca&&' · '+p.marca}</div>
+                    <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',marginBottom:6}}>{p.producto}</div>
                     <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+                      <div>
+                        <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Marca</div>
+                        <input defaultValue={p.marca||''}
+                          style={{...si,width:100}} id={`marca_${p.id}`} placeholder="marca"/>
+                      </div>
                       <div>
                         <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Dosis/ha</div>
                         <input autoFocus type="number" step="0.001" value={val} onChange={e=>setVal(e.target.value)}
@@ -712,15 +800,27 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
                       <div style={{display:'flex',gap:4,alignSelf:'flex-end'}}>
                         <button onClick={async()=>{
                           setSaving(true)
-                          const dosis = parseFloat(val)||null
-                          const eiqEl = document.getElementById(`eiq_${p.id}`)
-                          const ordEl = document.getElementById(`ord_${p.id}`)
+                          const dosis   = parseFloat(val)||null
+                          const marcaEl = document.getElementById(`marca_${p.id}`)
+                          const eiqEl   = document.getElementById(`eiq_${p.id}`)
+                          const ordEl   = document.getElementById(`ord_${p.id}`)
                           await supabase.from('ordenes_agroquimicos_productos').update({
-                            cantidad_ha:    dosis,
+                            marca:         marcaEl?.value || p.marca,
+                            cantidad_ha:   dosis,
                             cantidad_total: dosis&&sup ? parseFloat((dosis*sup).toFixed(2)) : p.cantidad_total,
-                            eiq_unitario:   eiqEl?.value ? parseFloat(eiqEl.value) : null,
-                            orden_carga:    ordEl?.value ? parseInt(ordEl.value)   : null,
+                            eiq_unitario:  eiqEl?.value ? parseFloat(eiqEl.value) : null,
+                            orden_carga:   ordEl?.value ? parseInt(ordEl.value)   : null,
                           }).eq('id', p.id)
+                          // Si la orden ya fue descontada: actualizar solo el movimiento de este producto
+                          if (a.descontado_almacen) {
+                            const nuevaCant = dosis&&sup ? parseFloat((dosis*sup).toFixed(2)) : p.cantidad_total
+                            const nuevaMarca = marcaEl?.value || p.marca
+                            await supabase.from('almacen_movimientos')
+                              .update({ marca: nuevaMarca, cantidad: nuevaCant })
+                              .eq('aplicacion_id', a.id)
+                              .eq('producto', p.producto)
+                              .eq('marca', p.marca)  // marca original antes del edit
+                          }
                           setSaving(false); setEditando(null); onRefresh()
                         }} disabled={saving}
                           style={{padding:'4px 10px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
@@ -730,9 +830,23 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
                           style={{padding:'4px 8px',background:'#F5F0E8',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
                           Cancelar
                         </button>
+                        <button onClick={async()=>{
+                          // Dividir en dos marcas: muestra sub-editor
+                          setEditando('dividir_'+p.id)
+                        }}
+                          style={{padding:'4px 8px',background:'#E4F0F4',border:'1px solid #7A9EAD',borderRadius:5,fontSize:11,cursor:'pointer',color:'#2C5A6A',fontFamily:'inherit'}}>
+                          ✂ Dividir
+                        </button>
                       </div>
                     </div>
                   </div>
+                )}
+                {dividiendo && (
+                  <DividirProducto
+                    prod={p} sup={sup} ordenId={a.id} descontado={a.descontado_almacen} quien={quien}
+                    onSave={async()=>{ setEditando(null); onRefresh() }}
+                    onCancel={cancelar}
+                  />
                 )}
               </div>
             )
