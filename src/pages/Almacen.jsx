@@ -899,6 +899,7 @@ export default function Almacen() {
             <button className="btn btn-secondary btn-sm" onClick={()=>setShowFormMov('stock_inicial')}>+ Stock inicial</button>
             <button className="btn btn-primary btn-sm" onClick={()=>setShowFormMov('compra')}>+ Remito compra</button>
           </div>
+        )}
 
       {/* ── RECUENTO FÍSICO ── */}
       {tab==='recuento'&&(
