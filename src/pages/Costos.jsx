@@ -153,9 +153,12 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
     centro_costos:     costo.centro_costos || '',
     factura_numero:    costo.factura_numero || '',
     factura_nombre:    costo.factura_nombre || '',
-    precio_unitario:   costo.precio_unitario ?? '',
-    iva_pct:           costo.iva_pct ?? 0.21,
-    cantidad:          costo.cantidad ?? '',
+    precio_unitario:       costo.precio_unitario ?? '',
+    unidad:                costo.unidad || '',
+    cantidad:              costo.cantidad ?? '',
+    precio_por_unidad_base: costo.precio_por_unidad_base ?? '',
+    unidad_base:           costo.unidad_base || '',
+    iva_pct:               costo.iva_pct ?? 0.21,
     moneda:            costo.moneda || '',
     cotizacion_usd:    costo.cotizacion_usd ?? '',
     tipo_pago:         costo.tipo_pago || '',
@@ -205,6 +208,14 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
       <td style={cell}><input value={form.proveedor} onChange={e => f('proveedor', e.target.value)} style={{ ...si, fontWeight: 500 }} /></td>
       {/* 4 Producto */}
       <td style={cell}><input value={form.producto_servicio} onChange={e => f('producto_servicio', e.target.value)} style={si} /></td>
+      {/* 4b P. unitario */}
+      <td style={cell}>
+        <input type="number" step="0.01" value={form.precio_unitario} onChange={e => f('precio_unitario', e.target.value)} style={{...si, width:70}} placeholder="0.00"/>
+      </td>
+      {/* 4c Unidad */}
+      <td style={cell}><input value={form.unidad} onChange={e => f('unidad', e.target.value)} style={{...si, width:60}} placeholder="L"/></td>
+      {/* 4d Cantidad */}
+      <td style={cell}><input type="number" step="0.01" value={form.cantidad} onChange={e => f('cantidad', e.target.value)} style={{...si, width:70}} placeholder="0"/></td>
       {/* 5 Centro */}
       <td style={cell}>
         <select value={form.centro_costos} onChange={e => f('centro_costos', e.target.value)} style={si}>
@@ -280,6 +291,17 @@ function EditRow({ costo, onSave, onCancel, onDelete, puedeEliminar, usuario }) 
       </td>
       {/* 24 Comentarios */}
       <td style={cell}><input value={form.comentarios} onChange={e => f('comentarios', e.target.value)} style={si} placeholder="comentarios" /></td>
+      {/* 24b Precio/unidad base — clave para almacen */}
+      <td style={{...cell, background:'#EBF4E8'}}>
+        <div style={{fontSize:9,color:'#2E4F26',marginBottom:2,fontWeight:600,textTransform:'uppercase'}}>P/unidad base</div>
+        <input type="number" step="0.0001" value={form.precio_por_unidad_base} onChange={e => f('precio_por_unidad_base', e.target.value)}
+          style={{...si, width:75, border:'1px solid #9DC87A'}} placeholder="0.0000"/>
+      </td>
+      <td style={{...cell, background:'#EBF4E8'}}>
+        <div style={{fontSize:9,color:'#2E4F26',marginBottom:2,fontWeight:600,textTransform:'uppercase'}}>Unid. base</div>
+        <input value={form.unidad_base} onChange={e => f('unidad_base', e.target.value)}
+          style={{...si, width:55, border:'1px solid #9DC87A'}} placeholder="L"/>
+      </td>
       {/* 25 Acciones */}
       <td style={cell}>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1020,7 +1042,7 @@ export default function Costos({ dolares }) {
               : filteredDetalle.length === 0 ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Sin registros con estos filtros</div>
                 : <table className="c-tbl">
                   <thead><tr>
-                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th><th style={{whiteSpace:'nowrap'}}>P. unitario</th><th>Unidad</th><th style={{textAlign:'right'}}>Cantidad</th>
+                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th><th style={{textAlign:'right'}}>Cantidad</th><th style={{background:'#EBF4E8',color:'#2E4F26',whiteSpace:'nowrap'}}>P/unidad base</th><th style={{background:'#EBF4E8',color:'#2E4F26'}}>Unid. base</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
                     <th>Sin IVA (USD)</th><th>IVA (USD)</th><th>Con IVA (USD)</th><th>Otros imp. (USD)</th><th>Total (USD)</th>
                     <th>Sin IVA (ARS)</th><th>Con IVA (ARS)</th><th>Otros imp. (ARS)</th><th>Total (ARS)</th>
@@ -1039,18 +1061,37 @@ export default function Costos({ dolares }) {
                             const cleanNum = v => { const n = parseFloat(v); return isNaN(n) ? null : n }
                             const payload = {
                               ...updated,
-                              precio_unitario: cleanNum(updated.precio_unitario),
-                              cantidad:        cleanNum(updated.cantidad),
-                              cotizacion_usd:  cleanNum(updated.cotizacion_usd),
-                              iva_pct:         updated.iva_pct ?? 0,
-                              dia_pago:        cleanVal(updated.dia_pago),
-                              mes_canje:       cleanVal(updated.mes_canje),
-                              cheque_emitido:  cleanVal(updated.cheque_emitido),
+                              precio_unitario:       cleanNum(updated.precio_unitario),
+                              cantidad:              cleanNum(updated.cantidad),
+                              precio_por_unidad_base: cleanNum(updated.precio_por_unidad_base),
+                              unidad_base:           updated.unidad_base || null,
+                              unidad:                updated.unidad || null,
+                              cotizacion_usd:        cleanNum(updated.cotizacion_usd),
+                              iva_pct:               updated.iva_pct ?? 0,
+                              dia_pago:              cleanVal(updated.dia_pago),
+                              mes_canje:             cleanVal(updated.mes_canje),
+                              cheque_emitido:        cleanVal(updated.cheque_emitido),
                             }
                             const { error } = await db.costos.update(c.id, payload)
                             if (error) {
                               alert('❌ Error al guardar: ' + (error.message || JSON.stringify(error)))
                               return
+                            }
+                            // Propagar precio_por_unidad_base al almacen_movimientos vinculado
+                            if (payload.precio_por_unidad_base && payload.precio_por_unidad_base > 0) {
+                              const { data: movs } = await supabase
+                                .from('almacen_movimientos')
+                                .select('id,cantidad,unidad')
+                                .eq('costo_id', c.id)
+                              if (movs?.length) {
+                                for (const mov of movs) {
+                                  const cant = parseFloat(mov.cantidad) || 0
+                                  await supabase.from('almacen_movimientos').update({
+                                    precio_unitario: payload.precio_por_unidad_base,
+                                    precio_total:    cant > 0 ? parseFloat((cant * payload.precio_por_unidad_base).toFixed(2)) : null,
+                                  }).eq('id', mov.id)
+                                }
+                              }
                             }
                             setEditando(null)
                             await fetchAll()
@@ -1075,6 +1116,8 @@ export default function Costos({ dolares }) {
                           <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', color:'var(--musgo)', fontSize:11 }}>{c.precio_unitario ? Number(c.precio_unitario).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '\u2014'}</td>
                           <td style={{ color:'var(--text-muted)', fontSize:11, whiteSpace:'nowrap' }}>{c.unidad||'\u2014'}</td>
                           <td style={{ fontFamily:'monospace', whiteSpace:'nowrap', fontSize:11, textAlign:'right', color:'var(--suelo)' }}>{c.cantidad ? Number(c.cantidad).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1}) : '\u2014'}</td>
+                          <td style={{ background:'#F0F7EE', fontFamily:'monospace', fontSize:11, whiteSpace:'nowrap', color:'#2E4F26' }}>{c.precio_por_unidad_base ? Number(c.precio_por_unidad_base).toLocaleString('es-AR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '\u2014'}</td>
+                          <td style={{ background:'#F0F7EE', fontSize:11, color:'#2E4F26' }}>{c.unidad_base||'\u2014'}</td>
                           <td><span className="cc chip-muted" style={{ whiteSpace: 'nowrap' }}>{c.centro_costos}</span></td>
                           <td style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{c.factura_numero || '—'}</td>
                           <td><span className={`cc ${CHIP[c.factura_nombre] || 'chip-muted'}`}>{c.factura_nombre}</span></td>
