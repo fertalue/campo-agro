@@ -351,6 +351,8 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
   }
 
   const border = isLast ? 'none' : '1px solid #EDE0C8'
+  // Las salidas de aplicación solo se editan desde el módulo Aplicaciones
+  useEffect(() => { if (editando && m.tipo === 'salida_aplicacion') setEditando(false) }, [editando])
   const si = {padding:'5px 7px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,fontFamily:'inherit',background:'#FDFAF4'}
 
   if (editando) return (
@@ -479,10 +481,13 @@ function FilaMov({ m, canEdit, onSave, onDelete, isLast }) {
       </td>
       {canEdit && (
         <td style={{padding:'8px 10px'}}>
-          <button onClick={()=>setEditando(true)}
-            style={{background:'transparent',border:'1px solid var(--border)',borderRadius:5,padding:'3px 8px',fontSize:10,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
-            Editar
-          </button>
+          {m.tipo === 'salida_aplicacion'
+            ? <span title="Editá desde el módulo Aplicaciones" style={{fontSize:10,color:'var(--text-muted)',fontStyle:'italic',cursor:'default'}}>🔒 Aplicaciones</span>
+            : <button onClick={()=>setEditando(true)}
+                style={{background:'transparent',border:'1px solid var(--border)',borderRadius:5,padding:'3px 8px',fontSize:10,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
+                Editar
+              </button>
+          }
         </td>
       )}
     </tr>
