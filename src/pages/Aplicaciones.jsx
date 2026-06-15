@@ -345,7 +345,7 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
           <button className="btn btn-primary" type="submit" disabled={saving}>{saving?'Guardando...':isEdit?'Guardar cambios':'Crear orden'}</button>
           <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancelar</button>
         </div>
-      </div>
+      </form>
     </div>
   )
 }
