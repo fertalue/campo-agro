@@ -76,10 +76,17 @@ function convertirPrecio(precio, unidadOrigen, unidadDestino) {
 // Procesa movimientos cronológicamente consumiendo lotes más antiguos primero.
 // Retorna: cantBase, valorStock, precioMedio (de lotes restantes), precioUltimo
 function calcularFIFO(movs) {
-  // Ordenar por fecha ascendente (más antiguo primero)
-  const sorted = [...movs].sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
+  // Ordenar cronológicamente; mismo día: entradas antes que salidas
+  const ORDEN_TIPO = { stock_inicial:0, compra:1, ajuste:2, salida_aplicacion:3 }
+  const sorted = [...movs].sort((a,b) => {
+    const d = new Date(a.fecha) - new Date(b.fecha)
+    if (d !== 0) return d
+    return (ORDEN_TIPO[a.tipo]||2) - (ORDEN_TIPO[b.tipo]||2)
+  })
 
-  // Cola de lotes: [{qty, precio}] todos en unidad base (kg/L)
+  // cantBaseTotal: stock real (puede ser negativo)
+  // lotes: solo para valoración FIFO (nunca negativo)
+  let cantBaseTotal = 0
   const lotes = []
 
   sorted.forEach(m => {
@@ -88,12 +95,14 @@ function calcularFIFO(movs) {
     const pu   = parseFloat(m.precio_unitario) || 0
 
     if (m.tipo === 'compra' || m.tipo === 'stock_inicial') {
-      // Entrada: agregar lote con precio normalizado a unidad base
+      cantBaseTotal += norm.qty
       const precioBase = pu > 0 ? pu / fo : null
       lotes.push({ qty: norm.qty, precio: precioBase })
 
     } else if (m.tipo === 'salida_aplicacion') {
-      // Salida: consumir desde el lote más antiguo (FIFO)
+      // cantBaseTotal refleja el stock real (puede quedar negativo)
+      cantBaseTotal -= Math.abs(norm.qty)
+      // Consumir lotes para valoración FIFO (si hay stock disponible)
       let porConsumir = Math.abs(norm.qty)
       while (porConsumir > 1e-9 && lotes.length > 0) {
         if (lotes[0].qty <= porConsumir + 1e-9) {
@@ -104,11 +113,14 @@ function calcularFIFO(movs) {
           porConsumir = 0
         }
       }
+      // El deficit (porConsumir > 0) no se agrega a lotes — la cantidad
+      // real ya quedó negativa en cantBaseTotal
 
     } else if (m.tipo === 'ajuste') {
-      const cantAdj = norm.qty  // puede ser positivo o negativo
+      const cantAdj = norm.qty
+      cantBaseTotal += cantAdj
       if (cantAdj > 0) {
-        lotes.push({ qty: cantAdj, precio: null })  // ajuste positivo sin precio
+        lotes.push({ qty: cantAdj, precio: null })
       } else {
         let porConsumir = Math.abs(cantAdj)
         while (porConsumir > 1e-9 && lotes.length > 0) {
@@ -124,21 +136,14 @@ function calcularFIFO(movs) {
     }
   })
 
-  // Calcular resultados desde los lotes restantes
-  const cantBase      = lotes.reduce((s,l) => s + l.qty, 0)
-  const lotesConPrecio = lotes.filter(l => l.precio != null && l.qty > 1e-9)
-  const valorStock    = lotesConPrecio.reduce((s,l) => s + l.qty * l.precio, 0)
-  const cantConPrecio = lotesConPrecio.reduce((s,l) => s + l.qty, 0)
+  const lotesConPrecio  = lotes.filter(l => l.precio != null && l.qty > 1e-9)
+  const valorStock      = lotesConPrecio.reduce((s,l) => s + l.qty * l.precio, 0)
+  const cantConPrecio   = lotesConPrecio.reduce((s,l) => s + l.qty, 0)
+  const precioMedio     = cantConPrecio > 0 ? valorStock / cantConPrecio : null
+  const ultimoLote      = [...lotesConPrecio].reverse()[0]
+  const precioUltimo    = ultimoLote?.precio || null
 
-  // Precio medio ponderado de los lotes que QUEDAN en stock (no el histórico completo)
-  // Esto evoluciona hacia los precios actuales a medida que se consumen lotes viejos
-  const precioMedio = cantConPrecio > 0 ? valorStock / cantConPrecio : null
-
-  // Precio del último lote con stock y precio (precio de mercado más reciente)
-  const ultimoLote  = [...lotesConPrecio].reverse()[0]
-  const precioUltimo = ultimoLote?.precio || null
-
-  return { cantBase, valorStock, precioMedio, precioUltimo, lotes }
+  return { cantBase: cantBaseTotal, valorStock, precioMedio, precioUltimo, lotes }
 }
 
 async function buscarEiqIA(producto, marca) {
