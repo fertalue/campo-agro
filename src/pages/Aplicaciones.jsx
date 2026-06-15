@@ -212,6 +212,7 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
               ))}
             </div>
           </div>
+          </div>  {/* cierre grid-2 cultivos */}
         )}
 
         {/* Productos */}
