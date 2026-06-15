@@ -141,7 +141,18 @@ function calcularFIFO(movs) {
   const cantConPrecio   = lotesConPrecio.reduce((s,l) => s + l.qty, 0)
   const precioMedio     = cantConPrecio > 0 ? valorStock / cantConPrecio : null
   const ultimoLote      = [...lotesConPrecio].reverse()[0]
-  const precioUltimo    = ultimoLote?.precio || null
+  let   precioUltimo    = ultimoLote?.precio || null
+
+  // Si no quedan lotes con precio pero hay stock (ej: viene de ajuste sin precio),
+  // usar el último precio de compra como referencia
+  if (precioUltimo === null && cantBaseTotal > 0.001) {
+    const entradasConPrecio = sorted
+      .filter(m => (m.tipo==='compra'||m.tipo==='stock_inicial') && parseFloat(m.precio_unitario) > 0)
+    const ultima = entradasConPrecio[entradasConPrecio.length - 1]
+    if (ultima) {
+      precioUltimo = parseFloat(ultima.precio_unitario) / factorABase(ultima.unidad)
+    }
+  }
 
   return { cantBase: cantBaseTotal, valorStock, precioMedio, precioUltimo, lotes }
 }
@@ -809,13 +820,18 @@ export default function Almacen() {
   const stockRows = Object.entries(stockPorProducto)
     .map(([k,v]) => {
       const fifo = calcularFIFO(v.movs)
+      const precioRef   = fifo.precioMedio ?? fifo.precioUltimo
+      const valorEst    = !fifo.precioMedio && fifo.precioUltimo && fifo.cantBase > 0
+        ? fifo.cantBase * fifo.precioUltimo  // estimado desde ultimo precio
+        : fifo.valorStock
       return {
         key: k, ...v,
         cantidad:     fifo.cantBase,
         unidad:       v.baseUnit,
-        precioMedio:  fifo.precioMedio,   // promedio ponderado de lotes restantes (FIFO)
-        precioUltimo: fifo.precioUltimo,  // precio del lote más reciente en stock
-        valorStock:   fifo.valorStock,    // valor exacto = Σ(lote.qty × lote.precio)
+        precioMedio:  fifo.precioMedio,
+        precioUltimo: fifo.precioUltimo,
+        valorStock:   valorEst,
+        precioEstimado: !fifo.precioMedio && fifo.precioUltimo != null,
       }
     })
     .sort((a,b)=>a.producto.localeCompare(b.producto))
@@ -943,7 +959,12 @@ export default function Almacen() {
                       </div>
                       <div style={{textAlign:'right'}}>
                         {r.precioUltimo && (
-                          <div style={{fontSize:10,color:'#4A7C3F',fontWeight:600}}>U$S {fmtNum(r.precioUltimo,2)}/{r.unidad} <span style={{fontWeight:400,color:'var(--text-muted)'}}>(última compra)</span></div>
+                          <div style={{fontSize:10,color:'#4A7C3F',fontWeight:600}}>
+                            U$S {fmtNum(r.precioUltimo,2)}/{r.unidad}
+                            <span style={{fontWeight:400,color:'var(--text-muted)'}}>
+                              {r.precioEstimado ? ' (estimado)' : ' (\u00faltima compra)'}
+                            </span>
+                          </div>
                         )}
                         {r.precioMedio && r.precioMedio !== r.precioUltimo && (
                           <div style={{fontSize:10,color:'var(--text-muted)'}}>U$S {fmtNum(r.precioMedio,2)}/{r.unidad} (promedio FIFO)</div>
