@@ -450,7 +450,7 @@ ${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#
 // ── DividirProducto ─────────────────────────────────────────────────────────
 function DividirProducto({ prod, sup, ordenId, descontado, quien, onSave, onCancel }) {
   const total = parseFloat(prod.cantidad_total) || 0
-  const [marca1, setMarca1] = useState(prod.marca || ')
+  const [marca1, setMarca1] = useState(prod.marca || '')
   const [cant1,  setCant1]  = useState(total)
   const [marca2, setMarca2] = useState('')
   const [cant2,  setCant2]  = useState(0)
