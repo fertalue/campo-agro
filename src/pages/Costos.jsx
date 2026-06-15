@@ -1042,7 +1042,7 @@ export default function Costos({ dolares }) {
               : filteredDetalle.length === 0 ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Sin registros con estos filtros</div>
                 : <table className="c-tbl">
                   <thead><tr>
-                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th><th style={{textAlign:'right'}}>Cantidad</th><th style={{background:'#EBF4E8',color:'#2E4F26',whiteSpace:'nowrap'}}>P/unidad base</th><th style={{background:'#EBF4E8',color:'#2E4F26'}}>Unid. base</th>
+                    <th>Fecha</th><th>Campaña</th><th>Concepto</th><th>Proveedor</th><th>Producto / Servicio</th><th style={{whiteSpace:'nowrap'}}>P. unitario</th><th>Unidad</th><th style={{textAlign:'right'}}>Cantidad</th><th style={{background:'#EBF4E8',color:'#2E4F26',whiteSpace:'nowrap'}}>P/unidad base</th><th style={{background:'#EBF4E8',color:'#2E4F26'}}>Unid. base</th>
                     <th>Centro</th><th>N° Factura</th><th>Factura</th>
                     <th>Sin IVA (USD)</th><th>IVA (USD)</th><th>Con IVA (USD)</th><th>Otros imp. (USD)</th><th>Total (USD)</th>
                     <th>Sin IVA (ARS)</th><th>Con IVA (ARS)</th><th>Otros imp. (ARS)</th><th>Total (ARS)</th>
