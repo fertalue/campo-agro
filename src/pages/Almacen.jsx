@@ -844,7 +844,45 @@ export default function Almacen() {
     m.producto?.toLowerCase().includes(fProd.toLowerCase())||
     m.marca?.toLowerCase().includes(fProd.toLowerCase()))
 
-  const TABS=[['stock','Stock actual'],['movimientos','Movimientos'],['catalogo','Catálogo']]
+  const TABS=[['stock','Stock actual'],['movimientos','Movimientos'],['recuento','Recuento'],['catalogo','Catálogo']]
+
+  // ── Recuento físico ─────────────────────────────────────────────────────────
+  const [recuento, setRecuento]     = useState({})
+  const [procesando, setProcesando] = useState(false)
+  const [procesados, setProcesados] = useState({})
+
+  function setReal(key, val) {
+    setRecuento(r => ({ ...r, [key]: { ...r[key], real: val, accion: r[key]?.accion || 'ignorar' } }))
+  }
+  function setAccion(key, val) {
+    setRecuento(r => ({ ...r, [key]: { ...r[key], accion: val, real: r[key]?.real ?? '' } }))
+  }
+
+  async function procesarRecuento() {
+    setProcesando(true)
+    const resultados = {}
+    const hoy = new Date().toISOString().split('T')[0]
+    for (const row of stockRows) {
+      const r = recuento[row.key]
+      if (!r || r.accion !== 'ajuste') continue
+      const real = parseFloat(r.real)
+      if (isNaN(real)) continue
+      const dif = parseFloat((real - row.cantidad).toFixed(4))
+      if (Math.abs(dif) < 1e-4) { resultados[row.key] = 'ok'; continue }
+      const { error } = await supabase.from('almacen_movimientos').insert({
+        fecha: hoy, tipo: 'ajuste',
+        producto: row.producto, marca: row.marca,
+        cantidad: dif, unidad: row.unidad,
+        quien_registro: quien,
+        observaciones: 'Ajuste recuento: teorico ' + fmtNum(row.cantidad,2) + ', real ' + fmtNum(real,2) + ' ' + row.unidad
+      })
+      resultados[row.key] = error ? 'error' : 'ok'
+    }
+    setProcesados(resultados)
+    setProcesando(false)
+    fetchAll()
+    setRecuento({})
+  }
 
   return (
     <div>
@@ -861,6 +899,90 @@ export default function Almacen() {
             <button className="btn btn-secondary btn-sm" onClick={()=>setShowFormMov('stock_inicial')}>+ Stock inicial</button>
             <button className="btn btn-primary btn-sm" onClick={()=>setShowFormMov('compra')}>+ Remito compra</button>
           </div>
+
+      {/* ── RECUENTO FÍSICO ── */}
+      {tab==='recuento'&&(
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div>
+              <div style={{fontWeight:600,color:'var(--tierra)',fontSize:14}}>Recuento físico de stock</div>
+              <div style={{fontSize:12,color:'var(--text-muted)'}}>Ingresá la cantidad real medida y elegí la acción a tomar.</div>
+            </div>
+            <button onClick={procesarRecuento} disabled={procesando||!Object.values(recuento).some(r=>r.accion==='ajuste'&&r.real!=='')}
+              style={{padding:'8px 18px',background:'var(--pasto)',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>
+              {procesando?'Procesando...':'⚡ Aplicar ajustes'}
+            </button>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr style={{background:'#F5F0E8',borderBottom:'2px solid #D8C9A8'}}>
+                <th style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Producto</th>
+                <th style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Marca</th>
+                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Stock teórico</th>
+                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Unidad</th>
+                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',fontSize:10}}>Stock real</th>
+                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Diferencia</th>
+                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Acción</th>
+                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockRows.map((row,i)=>{
+                const r       = recuento[row.key] || { real:'', accion:'ignorar' }
+                const realNum = r.real !== '' ? parseFloat(r.real) : null
+                const dif     = realNum !== null ? parseFloat((realNum - row.cantidad).toFixed(4)) : null
+                const estado  = procesados[row.key]
+                const difColor = dif === null ? '' : dif > 0 ? '#2E4F26' : dif < 0 ? '#993C1D' : '#4A7C3F'
+                return (
+                  <tr key={row.key} style={{borderBottom:'1px solid #EDE0C8',background:estado==='ok'?'#F0F7EE':estado==='error'?'#FEF0F0':i%2===0?'white':'#FDFAF4'}}>
+                    <td style={{padding:'7px 10px',fontWeight:500,color:'var(--tierra)'}}>{row.producto}</td>
+                    <td style={{padding:'7px 10px',color:'var(--arcilla)',fontSize:11}}>{row.marca||'—'}</td>
+                    <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:600}}>
+                      {fmtNum(row.cantidad,2)}
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'center',color:'var(--text-muted)'}}>{row.unidad}</td>
+                    <td style={{padding:'7px 10px',textAlign:'right'}}>
+                      <input
+                        type="number" step="0.01" value={r.real}
+                        onChange={e=>setReal(row.key, e.target.value)}
+                        placeholder="—"
+                        style={{width:80,padding:'4px 6px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:12,fontFamily:'monospace',textAlign:'right',background:realNum!==null?'white':'#F5F0E8'}}
+                      />
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:600,color:difColor}}>
+                      {dif !== null ? (dif > 0 ? '+' : '') + fmtNum(dif,2) : '—'}
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'center'}}>
+                      {estado==='ok'
+                        ? <span style={{color:'#2E4F26',fontWeight:600}}>✓ Aplicado</span>
+                        : estado==='error'
+                          ? <span style={{color:'#993C1D'}}>✗ Error</span>
+                          : <select value={r.accion} onChange={e=>setAccion(row.key, e.target.value)}
+                              style={{padding:'3px 6px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,fontFamily:'inherit',
+                                background:r.accion==='ajuste'?'#EBF4E8':r.accion==='revisar'?'#FFF9EE':'#F5F0E8',
+                                color:r.accion==='ajuste'?'#2E4F26':r.accion==='revisar'?'#6B3E22':'var(--text-muted)'}}>
+                              <option value="ignorar">Ignorar</option>
+                              <option value="ajuste">Ajuste</option>
+                              <option value="revisar">Revisar</option>
+                            </select>
+                      }
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'center'}}>
+                      {r.accion==='revisar'&&<span title="Pendiente de revisión manual" style={{fontSize:14}}>🔍</span>}
+                      {r.accion==='ajuste'&&dif!==null&&dif!==0&&<span title={`Se creará ajuste de ${dif>0?'+':''}${fmtNum(dif,2)} ${row.unidad}`} style={{fontSize:14}}>⚡</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {Object.values(procesados).some(v=>v==='ok')&&(
+            <div style={{marginTop:12,padding:'8px 14px',background:'#EBF4E8',borderRadius:8,fontSize:12,color:'#2E4F26',fontWeight:500}}>
+              ✓ {Object.values(procesados).filter(v=>v==='ok').length} ajuste(s) aplicados correctamente.
+            </div>
+          )}
+        </div>
+      )}
         )}
         {canEdit&&tab==='catalogo'&&(
           <button className="btn btn-primary btn-sm" onClick={()=>setShowFormProd(v=>!v)}>
