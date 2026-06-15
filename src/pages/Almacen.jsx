@@ -768,7 +768,8 @@ export default function Almacen() {
   const [loading, setLoading]     = useState(true)
   const [showFormProd, setShowFormProd] = useState(false)
   const [showFormMov, setShowFormMov]   = useState(null)
-  const [fProd, setFProd] = useState('')
+  const [fProd, setFProd]         = useState('')
+  const [soloConStock, setSoloConStock] = useState(false)
 
   useEffect(()=>{ fetchAll() },[])
 
@@ -819,6 +820,7 @@ export default function Almacen() {
     })
     .sort((a,b)=>a.producto.localeCompare(b.producto))
     .filter(r=>!fProd||r.producto.toLowerCase().includes(fProd.toLowerCase())||r.marca?.toLowerCase().includes(fProd.toLowerCase()))
+    .filter(r=>!soloConStock||r.cantidad>0.001)
 
   const valorTotalStock=stockRows.reduce((a,r)=>a+(r.valorStock||0),0)
 
@@ -861,15 +863,23 @@ export default function Almacen() {
           </button>
         ))}
       </div>
-
-      <div style={{position:'relative',marginBottom:14}}>
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--arcilla)" strokeWidth="1.5" strokeLinecap="round"
-          style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}>
-          <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
-        </svg>
-        <input value={fProd} onChange={e=>setFProd(e.target.value)} placeholder="Buscar por producto o marca..."
-          style={{width:'100%',padding:'8px 12px 8px 32px',border:'1px solid #D8C9A8',borderRadius:8,fontSize:13,background:'#FDFAF4',fontFamily:'inherit'}}/>
-        {fProd&&<button onClick={()=>setFProd('')} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--arcilla)',fontSize:16}}>✕</button>}
+      <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:14}}>
+        <div style={{position:'relative',flex:1}}>
+          <svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='var(--arcilla)' strokeWidth='1.5' strokeLinecap='round'
+            style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}>
+            <circle cx='7' cy='7' r='4.5'/><path d='M10.5 10.5L14 14'/>
+          </svg>
+          <input value={fProd} onChange={e=>setFProd(e.target.value)} placeholder='Buscar por producto o marca...'
+            style={{width:'100%',padding:'8px 12px 8px 32px',border:'1px solid #D8C9A8',borderRadius:8,fontSize:13,background:'#FDFAF4',fontFamily:'inherit'}}/>
+          {fProd&&<button onClick={()=>setFProd('')} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--arcilla)',fontSize:16}}>{String.fromCharCode(10005)}</button>}
+        </div>
+        <button onClick={()=>setSoloConStock(v=>!v)}
+          style={{padding:'7px 14px',borderRadius:8,border:'1px solid',fontSize:12,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap',
+            background:soloConStock?'var(--pasto)':'transparent',
+            color:soloConStock?'white':'var(--arcilla)',
+            borderColor:soloConStock?'var(--pasto)':'#D8C9A8'}}>
+          {soloConStock?'✓ Solo con stock':'Solo con stock'}
+        </button>
       </div>
 
       {showFormMov&&canEdit&&(
