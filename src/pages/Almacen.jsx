@@ -884,6 +884,76 @@ export default function Almacen() {
     setRecuento({})
   }
 
+  // ── Exportar el recuento a PDF (vía diálogo de impresión del navegador) ──────
+  function exportarRecuentoPDF() {
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+    const accionLbl = { ignorar:'Ignorar', ajuste:'Ajuste', revisar:'Revisar' }
+    const fechaLarga = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})
+
+    const filas = stockRows.map(row => {
+      const r       = recuento[row.key] || { real:'', accion:'ignorar' }
+      const realNum = r.real !== '' ? parseFloat(r.real) : null
+      const dif     = realNum !== null ? parseFloat((realNum - row.cantidad).toFixed(4)) : null
+      const difTxt  = dif !== null ? (dif > 0 ? '+' : '') + fmtNum(dif,2) : ''
+      const difCls  = dif === null ? '' : dif > 0 ? 'pos' : dif < 0 ? 'neg' : ''
+      return `<tr>
+        <td>${esc(row.producto)}</td>
+        <td>${esc(row.marca || '—')}</td>
+        <td class="num">${fmtNum(row.cantidad,2)}</td>
+        <td class="ctr">${esc(row.unidad || '')}</td>
+        <td class="num">${realNum !== null ? fmtNum(realNum,2) : ''}</td>
+        <td class="num ${difCls}">${difTxt}</td>
+        <td class="ctr">${accionLbl[r.accion] || 'Ignorar'}</td>
+      </tr>`
+    }).join('')
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+      <title>Recuento de stock — ${esc(fechaLarga)}</title>
+      <style>
+        @page { size: A4; margin: 16mm; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #2b2b2b; margin: 0; }
+        h1 { font-size: 18px; margin: 0 0 2px; color: #3B2E1E; }
+        .sub { font-size: 12px; color: #6b6b6b; margin-bottom: 16px; }
+        .sub strong { color: #2b2b2b; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { background: #F0EAD9; color: #5a4326; text-align: left; padding: 7px 8px; border-bottom: 2px solid #C8A96E; text-transform: uppercase; font-size: 9px; letter-spacing: .03em; }
+        td { padding: 6px 8px; border-bottom: 1px solid #e6ddc8; }
+        tr:nth-child(even) td { background: #faf7ef; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .ctr { text-align: center; }
+        .pos { color: #1f6b2e; font-weight: 600; }
+        .neg { color: #9e3a1c; font-weight: 600; }
+        .foot { margin-top: 22px; display: flex; gap: 40px; font-size: 11px; color: #555; }
+        .foot .line { flex: 1; border-top: 1px solid #999; padding-top: 4px; }
+        .meta { margin-top: 8px; font-size: 10px; color: #999; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style></head><body>
+      <h1>Recuento físico de stock — Almacén</h1>
+      <div class="sub">${esc(fechaLarga)} · Registrado por: <strong>${esc(quien || '—')}</strong> · ${stockRows.length} productos</div>
+      <table>
+        <thead><tr>
+          <th>Producto</th><th>Marca</th><th class="num">Stock teórico</th>
+          <th class="ctr">Unidad</th><th class="num">Stock real</th>
+          <th class="num">Diferencia</th><th class="ctr">Acción</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+      <div class="foot">
+        <div class="line">Contó (firma)</div>
+        <div class="line">Revisó (firma)</div>
+      </div>
+      <div class="meta">Documento previo a la aplicación de ajustes. El stock del sistema no se modifica al exportar.</div>
+      </body></html>`
+
+    const w = window.open('', '_blank')
+    if (!w) { alert('Permití las ventanas emergentes para poder exportar el PDF.'); return }
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 350)
+  }
+
   return (
     <div>
       <div className="flex-between mb-2">
@@ -901,90 +971,6 @@ export default function Almacen() {
           </div>
         )}
 
-      {/* ── RECUENTO FÍSICO ── */}
-      {tab==='recuento'&&(
-        <div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <div>
-              <div style={{fontWeight:600,color:'var(--tierra)',fontSize:14}}>Recuento físico de stock</div>
-              <div style={{fontSize:12,color:'var(--text-muted)'}}>Ingresá la cantidad real medida y elegí la acción a tomar.</div>
-            </div>
-            <button onClick={procesarRecuento} disabled={procesando||!Object.values(recuento).some(r=>r.accion==='ajuste'&&r.real!=='')}
-              style={{padding:'8px 18px',background:'var(--pasto)',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>
-              {procesando?'Procesando...':'⚡ Aplicar ajustes'}
-            </button>
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-            <thead>
-              <tr style={{background:'#F5F0E8',borderBottom:'2px solid #D8C9A8'}}>
-                <th style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Producto</th>
-                <th style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Marca</th>
-                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Stock teórico</th>
-                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Unidad</th>
-                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',fontSize:10}}>Stock real</th>
-                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Diferencia</th>
-                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Acción</th>
-                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {stockRows.map((row,i)=>{
-                const r       = recuento[row.key] || { real:'', accion:'ignorar' }
-                const realNum = r.real !== '' ? parseFloat(r.real) : null
-                const dif     = realNum !== null ? parseFloat((realNum - row.cantidad).toFixed(4)) : null
-                const estado  = procesados[row.key]
-                const difColor = dif === null ? '' : dif > 0 ? '#2E4F26' : dif < 0 ? '#993C1D' : '#4A7C3F'
-                return (
-                  <tr key={row.key} style={{borderBottom:'1px solid #EDE0C8',background:estado==='ok'?'#F0F7EE':estado==='error'?'#FEF0F0':i%2===0?'white':'#FDFAF4'}}>
-                    <td style={{padding:'7px 10px',fontWeight:500,color:'var(--tierra)'}}>{row.producto}</td>
-                    <td style={{padding:'7px 10px',color:'var(--arcilla)',fontSize:11}}>{row.marca||'—'}</td>
-                    <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:600}}>
-                      {fmtNum(row.cantidad,2)}
-                    </td>
-                    <td style={{padding:'7px 10px',textAlign:'center',color:'var(--text-muted)'}}>{row.unidad}</td>
-                    <td style={{padding:'7px 10px',textAlign:'right'}}>
-                      <input
-                        type="number" step="0.01" value={r.real}
-                        onChange={e=>setReal(row.key, e.target.value)}
-                        placeholder="—"
-                        style={{width:80,padding:'4px 6px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:12,fontFamily:'monospace',textAlign:'right',background:realNum!==null?'white':'#F5F0E8'}}
-                      />
-                    </td>
-                    <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:600,color:difColor}}>
-                      {dif !== null ? (dif > 0 ? '+' : '') + fmtNum(dif,2) : '—'}
-                    </td>
-                    <td style={{padding:'7px 10px',textAlign:'center'}}>
-                      {estado==='ok'
-                        ? <span style={{color:'#2E4F26',fontWeight:600}}>✓ Aplicado</span>
-                        : estado==='error'
-                          ? <span style={{color:'#993C1D'}}>✗ Error</span>
-                          : <select value={r.accion} onChange={e=>setAccion(row.key, e.target.value)}
-                              style={{padding:'3px 6px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,fontFamily:'inherit',
-                                background:r.accion==='ajuste'?'#EBF4E8':r.accion==='revisar'?'#FFF9EE':'#F5F0E8',
-                                color:r.accion==='ajuste'?'#2E4F26':r.accion==='revisar'?'#6B3E22':'var(--text-muted)'}}>
-                              <option value="ignorar">Ignorar</option>
-                              <option value="ajuste">Ajuste</option>
-                              <option value="revisar">Revisar</option>
-                            </select>
-                      }
-                    </td>
-                    <td style={{padding:'7px 10px',textAlign:'center'}}>
-                      {r.accion==='revisar'&&<span title="Pendiente de revisión manual" style={{fontSize:14}}>🔍</span>}
-                      {r.accion==='ajuste'&&dif!==null&&dif!==0&&<span title={`Se creará ajuste de ${dif>0?'+':''}${fmtNum(dif,2)} ${row.unidad}`} style={{fontSize:14}}>⚡</span>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          {Object.values(procesados).some(v=>v==='ok')&&(
-            <div style={{marginTop:12,padding:'8px 14px',background:'#EBF4E8',borderRadius:8,fontSize:12,color:'#2E4F26',fontWeight:500}}>
-              ✓ {Object.values(procesados).filter(v=>v==='ok').length} ajuste(s) aplicados correctamente.
-            </div>
-          )}
-        </div>
-      )}
-        )}
         {canEdit&&tab==='catalogo'&&(
           <button className="btn btn-primary btn-sm" onClick={()=>setShowFormProd(v=>!v)}>
             {showFormProd?'Cancelar':'+ Nuevo producto'}
@@ -1128,6 +1114,98 @@ export default function Almacen() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {/* ── RECUENTO FÍSICO ── */}
+      {tab==='recuento'&&(
+        <div className="card" style={{padding:'16px',overflowX:'auto'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,gap:12,flexWrap:'wrap'}}>
+            <div>
+              <div style={{fontWeight:600,color:'var(--tierra)',fontSize:14}}>Recuento físico de stock</div>
+              <div style={{fontSize:12,color:'var(--text-muted)'}}>Ingresá la cantidad real medida y elegí la acción a tomar.</div>
+            </div>
+            <div style={{display:'flex',gap:8,flexShrink:0}}>
+              <button onClick={exportarRecuentoPDF}
+                style={{padding:'8px 16px',background:'transparent',color:'var(--tierra)',border:'1px solid #C8A96E',borderRadius:8,fontSize:13,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>
+                📄 Exportar PDF
+              </button>
+              <button onClick={procesarRecuento} disabled={procesando||!Object.values(recuento).some(r=>r.accion==='ajuste'&&r.real!=='')}
+                style={{padding:'8px 18px',background:'var(--pasto)',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:procesando?'default':'pointer',fontFamily:'inherit',fontWeight:600,opacity:procesando||!Object.values(recuento).some(r=>r.accion==='ajuste'&&r.real!=='')?0.55:1}}>
+                {procesando?'Procesando...':'⚡ Aplicar ajustes'}
+              </button>
+            </div>
+          </div>
+          {stockRows.length===0
+            ? <div style={{padding:24,textAlign:'center',color:'var(--arcilla)'}}>Sin productos para recontar.</div>
+            : <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr style={{background:'#F5F0E8',borderBottom:'2px solid #D8C9A8'}}>
+                <th style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Producto</th>
+                <th style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Marca</th>
+                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Stock teórico</th>
+                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Unidad</th>
+                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',fontSize:10}}>Stock real</th>
+                <th style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Diferencia</th>
+                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}>Acción</th>
+                <th style={{padding:'8px 10px',textAlign:'center',fontWeight:600,color:'#6B3E22',textTransform:'uppercase',fontSize:10}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockRows.map((row,i)=>{
+                const r       = recuento[row.key] || { real:'', accion:'ignorar' }
+                const realNum = r.real !== '' ? parseFloat(r.real) : null
+                const dif     = realNum !== null ? parseFloat((realNum - row.cantidad).toFixed(4)) : null
+                const estado  = procesados[row.key]
+                const difColor = dif === null ? '' : dif > 0 ? '#2E4F26' : dif < 0 ? '#993C1D' : '#4A7C3F'
+                return (
+                  <tr key={row.key} style={{borderBottom:'1px solid #EDE0C8',background:estado==='ok'?'#F0F7EE':estado==='error'?'#FEF0F0':i%2===0?'white':'#FDFAF4'}}>
+                    <td style={{padding:'7px 10px',fontWeight:500,color:'var(--tierra)'}}>{row.producto}</td>
+                    <td style={{padding:'7px 10px',color:'var(--arcilla)',fontSize:11}}>{row.marca||'—'}</td>
+                    <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:600}}>
+                      {fmtNum(row.cantidad,2)}
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'center',color:'var(--text-muted)'}}>{row.unidad}</td>
+                    <td style={{padding:'7px 10px',textAlign:'right'}}>
+                      <input
+                        type="number" step="0.01" value={r.real}
+                        onChange={e=>setReal(row.key, e.target.value)}
+                        placeholder="—"
+                        style={{width:80,padding:'4px 6px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:12,fontFamily:'monospace',textAlign:'right',background:realNum!==null?'white':'#F5F0E8'}}
+                      />
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:600,color:difColor}}>
+                      {dif !== null ? (dif > 0 ? '+' : '') + fmtNum(dif,2) : '—'}
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'center'}}>
+                      {estado==='ok'
+                        ? <span style={{color:'#2E4F26',fontWeight:600}}>✓ Aplicado</span>
+                        : estado==='error'
+                          ? <span style={{color:'#993C1D'}}>✗ Error</span>
+                          : <select value={r.accion} onChange={e=>setAccion(row.key, e.target.value)}
+                              style={{padding:'3px 6px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,fontFamily:'inherit',
+                                background:r.accion==='ajuste'?'#EBF4E8':r.accion==='revisar'?'#FFF9EE':'#F5F0E8',
+                                color:r.accion==='ajuste'?'#2E4F26':r.accion==='revisar'?'#6B3E22':'var(--text-muted)'}}>
+                              <option value="ignorar">Ignorar</option>
+                              <option value="ajuste">Ajuste</option>
+                              <option value="revisar">Revisar</option>
+                            </select>
+                      }
+                    </td>
+                    <td style={{padding:'7px 10px',textAlign:'center'}}>
+                      {r.accion==='revisar'&&<span title="Pendiente de revisión manual" style={{fontSize:14}}>🔍</span>}
+                      {r.accion==='ajuste'&&dif!==null&&dif!==0&&<span title={`Se creará ajuste de ${dif>0?'+':''}${fmtNum(dif,2)} ${row.unidad}`} style={{fontSize:14}}>⚡</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>}
+          {Object.values(procesados).some(v=>v==='ok')&&(
+            <div style={{marginTop:12,padding:'8px 14px',background:'#EBF4E8',borderRadius:8,fontSize:12,color:'#2E4F26',fontWeight:500}}>
+              ✓ {Object.values(procesados).filter(v=>v==='ok').length} ajuste(s) aplicados correctamente.
+            </div>
           )}
         </div>
       )}
