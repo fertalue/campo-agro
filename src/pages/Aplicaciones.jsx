@@ -579,33 +579,56 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
     })
     if (error) { setSaving(false); alert('Error al agregar el producto: '+error.message); return }
 
-    // Si la orden ya fue descontada del almacén, generar también el movimiento de salida
-    if (a.descontado_almacen && total) {
-      const key = nuevoProd.producto.toLowerCase()
-      const movsProd = movsAlm.filter(m => (m.producto||'').toLowerCase()===key && (m.tipo==='compra'||m.tipo==='stock_inicial'))
-      const ppu = movsProd.length
-        ? movsProd.reduce((s,m)=>s+(m.precio_unitario||0)*m.cantidad,0) / movsProd.reduce((s,m)=>s+m.cantidad,0)
-        : null
-      await supabase.from('almacen_movimientos').insert({
-        fecha:           a.fecha,
-        tipo:            'salida_aplicacion',
-        producto_id:     nuevoProd.producto_id || null,
-        producto:        nuevoProd.producto,
-        marca:           nuevoProd.marca || null,
-        cantidad:        total,
-        unidad:          nuevoProd.unidad,
-        precio_unitario: ppu || null,
-        precio_total:    ppu ? ppu*total : null,
-        aplicacion_id:   a.id,
-        quien_registro:  quien,
-        observaciones:   `Aplicación: ${a.lote||''} ${a.fecha} (agregado)`,
-      })
-    }
+    // Si la orden ya fue descontada del almacén, regenerar los movimientos
+    await resincronizarMovimientos(a)
 
     setSaving(false)
     setNuevoProd({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })
     setEditando(null)
     onRefresh()
+  }
+
+  async function eliminarProducto(p) {
+    if (!confirm(`¿Eliminar "${p.producto}${p.marca?' · '+p.marca:''}" de esta orden?`)) return
+    setSaving(true)
+    await supabase.from('ordenes_agroquimicos_productos').delete().eq('id', p.id)
+    // Si la orden ya fue descontada, regenerar los movimientos del almacén
+    await resincronizarMovimientos(a)
+    setSaving(false); setEditando(null); onRefresh()
+  }
+
+  // Regenera los movimientos de salida del almacén a partir de los productos
+  // actuales de la orden. Es la única fuente de verdad: borra los movimientos
+  // previos de esta aplicación y los vuelve a crear con los datos vigentes.
+  async function resincronizarMovimientos(orden) {
+    if (!orden.descontado_almacen) return
+    const { data: pp } = await supabase.from('ordenes_agroquimicos_productos').select('*').eq('orden_id', orden.id)
+    await supabase.from('almacen_movimientos').delete().eq('aplicacion_id', orden.id)
+    const inserts = (pp||[])
+      .filter(p => p.cantidad_total && parseFloat(p.cantidad_total) > 0)
+      .map(p => {
+        const key = (p.producto||'').toLowerCase()
+        const movsProd = movsAlm.filter(m => (m.producto||'').toLowerCase()===key && (m.tipo==='compra'||m.tipo==='stock_inicial'))
+        const ppu = movsProd.length
+          ? movsProd.reduce((s,m)=>s+(m.precio_unitario||0)*m.cantidad,0) / movsProd.reduce((s,m)=>s+m.cantidad,0)
+          : null
+        const cant = parseFloat(p.cantidad_total)
+        return {
+          fecha:           orden.fecha,
+          tipo:            'salida_aplicacion',
+          producto_id:     p.producto_id || null,
+          producto:        p.producto,
+          marca:           p.marca || null,
+          cantidad:        cant,
+          unidad:          p.unidad,
+          precio_unitario: ppu || null,
+          precio_total:    ppu ? ppu*cant : null,
+          aplicacion_id:   orden.id,
+          quien_registro:  quien,
+          observaciones:   `Aplicación: ${orden.lote||''} ${orden.fecha}`,
+        }
+      })
+    if (inserts.length) await supabase.from('almacen_movimientos').insert(inserts)
   }
 
   const sup        = parseFloat(a.superficie_ha)||0
@@ -626,6 +649,19 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
   async function guardarCampo(campo, valor) {
     setSaving(true)
     await supabase.from('ordenes_agroquimicos').update({ [campo]: valor ?? null }).eq('id', a.id)
+    // Si cambia la superficie, recalcular el total de cada producto (dosis × sup)
+    if (campo === 'superficie_ha') {
+      const supN = parseFloat(valor)||0
+      const { data: pp } = await supabase.from('ordenes_agroquimicos_productos').select('id,cantidad_ha').eq('orden_id', a.id)
+      for (const pr of (pp||[])) {
+        const d = parseFloat(pr.cantidad_ha)||0
+        await supabase.from('ordenes_agroquimicos_productos')
+          .update({ cantidad_total: supN&&d ? parseFloat((d*supN).toFixed(2)) : null })
+          .eq('id', pr.id)
+      }
+    }
+    // Regenerar los movimientos del almacén con los datos nuevos de la orden
+    await resincronizarMovimientos({ ...a, [campo]: valor })
     setSaving(false); setEditando(null); onRefresh()
   }
 
@@ -891,16 +927,8 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                             eiq_unitario:  eiqEl?.value ? parseFloat(eiqEl.value) : null,
                             orden_carga:   ordEl?.value ? parseInt(ordEl.value)   : null,
                           }).eq('id', p.id)
-                          // Si la orden ya fue descontada: actualizar solo el movimiento de este producto
-                          if (a.descontado_almacen) {
-                            const nuevaCant = dosis&&sup ? parseFloat((dosis*sup).toFixed(2)) : p.cantidad_total
-                            const nuevaMarca = marcaEl?.value || p.marca
-                            await supabase.from('almacen_movimientos')
-                              .update({ marca: nuevaMarca, cantidad: nuevaCant })
-                              .eq('aplicacion_id', a.id)
-                              .eq('producto', p.producto)
-                              .eq('marca', p.marca)  // marca original antes del edit
-                          }
+                          // Si la orden ya fue descontada, regenerar los movimientos del almacén
+                          await resincronizarMovimientos(a)
                           setSaving(false); setEditando(null); onRefresh()
                         }} disabled={saving}
                           style={{padding:'4px 10px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
@@ -916,6 +944,10 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                         }}
                           style={{padding:'4px 8px',background:'#E4F0F4',border:'1px solid #7A9EAD',borderRadius:5,fontSize:11,cursor:'pointer',color:'#2C5A6A',fontFamily:'inherit'}}>
                           ✂ Dividir
+                        </button>
+                        <button onClick={()=>eliminarProducto(p)} disabled={saving}
+                          style={{padding:'4px 8px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:5,fontSize:11,cursor:'pointer',color:'#993C1D',fontFamily:'inherit'}}>
+                          🗑 Eliminar
                         </button>
                       </div>
                     </div>
