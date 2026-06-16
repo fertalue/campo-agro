@@ -449,7 +449,7 @@ ${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#
 }
 
 // ── DividirProducto ─────────────────────────────────────────────────────────
-function DividirProducto({ prod, sup, ordenId, descontado, quien, onSave, onCancel }) {
+function DividirProducto({ prod, sup, ordenId, ordenFecha, descontado, quien, onSave, onCancel }) {
   const total = parseFloat(prod.cantidad_total) || 0
   const [marca1, setMarca1] = useState(prod.marca || '')
   const [cant1,  setCant1]  = useState(total)
@@ -476,7 +476,7 @@ function DividirProducto({ prod, sup, ordenId, descontado, quien, onSave, onCanc
       })
     }
     if (descontado) {
-      const hoy = new Date().toISOString().split('T')[0]
+      const hoy = ordenFecha || new Date().toISOString().split('T')[0]
       // Borrar TODOS los movimientos de este producto en esta orden (cualquier marca)
       await supabase.from('almacen_movimientos')
         .delete()
@@ -539,10 +539,74 @@ function DividirProducto({ prod, sup, ordenId, descontado, quien, onSave, onCanc
 }
 
 // ── OrdenCard — tarjeta con edición inline campo por campo ────────────────────
-function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onDescontar, onRevertir, onPDF }) {
+function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh, onDelete, onDescontar, onRevertir, onPDF }) {
   const [editando, setEditando] = useState(null)
   const [val, setVal]           = useState('')
   const [saving, setSaving]     = useState(false)
+  const [nuevoProd, setNuevoProd] = useState({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })
+
+  function setNP(k,v) {
+    setNuevoProd(prev => {
+      const next = {...prev,[k]:v}
+      if (k==='producto_id') {
+        const pr = (productosAlm||[]).find(x=>x.id===v)
+        if (pr) { next.producto=pr.producto; next.marca=pr.marca||''; next.unidad=pr.unidad||'L'; next.eiq=pr.eiq||'' }
+      }
+      return next
+    })
+  }
+
+  async function agregarProducto() {
+    if (!nuevoProd.producto || !nuevoProd.cantidad_ha) { alert('Completá al menos el producto y la dosis por hectárea.'); return }
+    setSaving(true)
+    const sup2  = parseFloat(a.superficie_ha)||0
+    const dosis = parseFloat(nuevoProd.cantidad_ha)||0
+    const total = sup2 && dosis ? parseFloat((dosis*sup2).toFixed(2)) : null
+    const ordenCarga = nuevoProd.orden_carga
+      ? parseInt(nuevoProd.orden_carga)
+      : (prods.length ? Math.max(...prods.map(p=>p.orden_carga||0))+1 : 1)
+
+    const { error } = await supabase.from('ordenes_agroquimicos_productos').insert({
+      orden_id:       a.id,
+      producto_id:    nuevoProd.producto_id || null,
+      producto:       nuevoProd.producto,
+      marca:          nuevoProd.marca || null,
+      cantidad_ha:    dosis || null,
+      cantidad_total: total,
+      unidad:         nuevoProd.unidad,
+      orden_carga:    ordenCarga,
+      eiq_unitario:   nuevoProd.eiq ? parseFloat(nuevoProd.eiq) : null,
+    })
+    if (error) { setSaving(false); alert('Error al agregar el producto: '+error.message); return }
+
+    // Si la orden ya fue descontada del almacén, generar también el movimiento de salida
+    if (a.descontado_almacen && total) {
+      const key = nuevoProd.producto.toLowerCase()
+      const movsProd = movsAlm.filter(m => (m.producto||'').toLowerCase()===key && (m.tipo==='compra'||m.tipo==='stock_inicial'))
+      const ppu = movsProd.length
+        ? movsProd.reduce((s,m)=>s+(m.precio_unitario||0)*m.cantidad,0) / movsProd.reduce((s,m)=>s+m.cantidad,0)
+        : null
+      await supabase.from('almacen_movimientos').insert({
+        fecha:           a.fecha,
+        tipo:            'salida_aplicacion',
+        producto_id:     nuevoProd.producto_id || null,
+        producto:        nuevoProd.producto,
+        marca:           nuevoProd.marca || null,
+        cantidad:        total,
+        unidad:          nuevoProd.unidad,
+        precio_unitario: ppu || null,
+        precio_total:    ppu ? ppu*total : null,
+        aplicacion_id:   a.id,
+        quien_registro:  quien,
+        observaciones:   `Aplicación: ${a.lote||''} ${a.fecha} (agregado)`,
+      })
+    }
+
+    setSaving(false)
+    setNuevoProd({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })
+    setEditando(null)
+    onRefresh()
+  }
 
   const sup        = parseFloat(a.superficie_ha)||0
   const costoLabor = parseFloat(a.costo_ha_usd)||0
@@ -742,9 +806,20 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
       )}
 
       {/* Productos */}
-      {prods.length > 0 && (
+      {(prods.length > 0 || canEdit) && (
         <div style={{background:'#F0F6FA',borderRadius:8,padding:'8px 12px',marginBottom:8}}>
-          <div style={{fontSize:9,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Productos — orden de carga</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+            <div style={{fontSize:9,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',letterSpacing:'0.05em'}}>Productos — orden de carga</div>
+            {canEdit&&editando===null&&(
+              <button onClick={()=>{setEditando('nuevo_producto');setNuevoProd({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })}}
+                style={{padding:'3px 10px',background:'white',border:'1px solid #7A9EAD',borderRadius:6,fontSize:11,cursor:'pointer',color:'#2C5A6A',fontFamily:'inherit'}}>
+                + Agregar producto
+              </button>
+            )}
+          </div>
+          {prods.length===0&&editando!=='nuevo_producto'&&(
+            <div style={{fontSize:11,color:'var(--text-muted)',padding:'2px 0 6px'}}>Sin productos cargados todavía.</div>
+          )}
           {prods.map((p,i)=>{
             const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
             const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
@@ -847,8 +922,7 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
                   </div>
                 )}
                 {dividiendo && (
-                  <DividirProducto
-                    prod={p} sup={sup} ordenId={a.id} descontado={a.descontado_almacen} quien={quien}
+                  <DividirProducto prod={p} sup={sup} ordenId={a.id} ordenFecha={a.fecha} descontado={a.descontado_almacen} quien={quien}
                     onSave={async()=>{ setEditando(null); onRefresh() }}
                     onCancel={cancelar}
                   />
@@ -856,6 +930,75 @@ function OrdenCard({ a, prods, movsAlm, canEdit, quien, onRefresh, onDelete, onD
               </div>
             )
           })}
+          {editando==='nuevo_producto' && (
+            <div style={{background:'white',borderRadius:7,padding:'10px 12px',marginTop:6,border:'1px solid #7A9EAD'}}>
+              <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',marginBottom:8}}>Agregar producto a esta orden</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'flex-end'}}>
+                <div style={{flex:'1 1 220px',minWidth:180}}>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Del catálogo</div>
+                  <select value={nuevoProd.producto_id} onChange={e=>setNP('producto_id',e.target.value)}
+                    style={{width:'100%',padding:'5px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit',background:'#FDFAF4'}}>
+                    <option value="">— Seleccionar o escribir abajo —</option>
+                    {(productosAlm||[]).map(pr=>(
+                      <option key={pr.id} value={pr.id}>{pr.producto}{pr.marca?' · '+pr.marca:''}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'flex-end',marginTop:6}}>
+                <div style={{flex:2,minWidth:120}}>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Principio activo</div>
+                  <input value={nuevoProd.producto} onChange={e=>setNP('producto',e.target.value)} placeholder="Ej: Glifosato"
+                    style={{width:'100%',padding:'5px 7px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit'}}/>
+                </div>
+                <div style={{flex:1,minWidth:90}}>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Marca</div>
+                  <input value={nuevoProd.marca} onChange={e=>setNP('marca',e.target.value)} placeholder="Marca"
+                    style={{width:'100%',padding:'5px 7px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit'}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Dosis/ha</div>
+                  <input type="number" step="0.001" value={nuevoProd.cantidad_ha} onChange={e=>setNP('cantidad_ha',e.target.value)} placeholder="0.000"
+                    style={{width:80,padding:'5px 7px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit'}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Unidad</div>
+                  <select value={nuevoProd.unidad} onChange={e=>setNP('unidad',e.target.value)}
+                    style={{width:64,padding:'5px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit'}}>
+                    {UNIDADES.map(u=><option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>EIQ</div>
+                  <input type="number" step="0.1" value={nuevoProd.eiq} onChange={e=>setNP('eiq',e.target.value)} placeholder="—"
+                    style={{width:58,padding:'5px 6px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit',background:'#E4F0F4'}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:'#2C5A6A',marginBottom:2}}>Orden</div>
+                  <input type="number" value={nuevoProd.orden_carga} onChange={e=>setNP('orden_carga',e.target.value)} placeholder={String(prods.length?Math.max(...prods.map(p=>p.orden_carga||0))+1:1)}
+                    style={{width:48,padding:'5px 6px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit'}}/>
+                </div>
+                {sup>0&&nuevoProd.cantidad_ha&&(
+                  <div style={{fontSize:10,color:'var(--text-muted)',alignSelf:'flex-end',paddingBottom:4}}>
+                    → {(parseFloat(nuevoProd.cantidad_ha)*sup).toFixed(1)} {nuevoProd.unidad} total
+                  </div>
+                )}
+              </div>
+              {a.descontado_almacen&&(
+                <div style={{fontSize:10,color:'#993C1D',marginTop:6}}>⚠ Esta orden ya fue descontada del almacén — al agregar el producto también se descuenta del stock.</div>
+              )}
+              <div style={{display:'flex',gap:6,marginTop:8}}>
+                <button onClick={agregarProducto} disabled={saving}
+                  style={{padding:'5px 12px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                  {saving?'Guardando...':'✓ Agregar'}
+                </button>
+                <button onClick={cancelar}
+                  style={{padding:'5px 10px',background:'#F5F0E8',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1029,7 +1172,7 @@ export default function Aplicaciones() {
           {ordenes.map(a => {
             const prods = (prodsPorOrden[a.id]||[]).sort((x,y)=>(x.orden_carga||99)-(y.orden_carga||99))
             return (
-              <OrdenCard key={a.id} a={a} prods={prods} movsAlm={movsAlm} canEdit={canEdit} quien={quien}
+              <OrdenCard key={a.id} a={a} prods={prods} movsAlm={movsAlm} productosAlm={productosAlm} canEdit={canEdit} quien={quien}
                 onRefresh={fetchAll}
                 onDelete={deleteOrden}
                 onDescontar={descontarAlmacen}
