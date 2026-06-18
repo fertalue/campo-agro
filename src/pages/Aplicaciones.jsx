@@ -1214,7 +1214,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                   <div style={{marginTop:8,padding:'6px 10px',background:'white',borderRadius:5,fontSize:11}}>
                     <strong>Vista previa:</strong> {prods.sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).map(p=>(
                       <span key={p.id} style={{marginRight:12}}>{p.producto}: {tancadas.filter(t=>parseFloat(t.ha)>0).map((t,i)=>(
-                        <span key={i}><em>T{i+1}</em>={(parseFloat(p.cantidad_ha)||0)*parseFloat(t.ha)).toFixed(1)} {p.unidad} </span>
+                        <span key={i}><em>T{i+1}</em>={((parseFloat(p.cantidad_ha)||0)*parseFloat(t.ha)).toFixed(1)} {p.unidad} </span>
                       ))}</span>
                     ))}
                   </div>
