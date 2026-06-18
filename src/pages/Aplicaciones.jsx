@@ -758,6 +758,32 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
     if (inserts.length) await supabase.from('almacen_movimientos').insert(inserts)
   }
 
+  // Stock disponible en almacén de un producto (por id de catálogo o nombre+marca)
+  function stockDisponible(p) {
+    if (p.producto_id) {
+      let hayId = false
+      const totId = movsAlm.reduce((s,m) => {
+        if (m.producto_id !== p.producto_id) return s
+        hayId = true
+        const c = parseFloat(m.cantidad)||0
+        return s + (m.tipo==='salida_aplicacion' ? -Math.abs(c) : c)
+      }, 0)
+      if (hayId) return totId
+    }
+    if (!p.producto) return p.producto_id ? 0 : null
+    const key = p.producto.toLowerCase()
+    const mk  = (p.marca||'').toLowerCase()
+    let hay = false
+    const tot = movsAlm.reduce((s,m) => {
+      if ((m.producto||'').toLowerCase() !== key) return s
+      if (mk && (m.marca||'').toLowerCase() !== mk) return s
+      hay = true
+      const c = parseFloat(m.cantidad)||0
+      return s + (m.tipo==='salida_aplicacion' ? -Math.abs(c) : c)
+    }, 0)
+    return hay ? tot : (p.producto_id ? 0 : null)
+  }
+
   const sup        = parseFloat(a.superficie_ha)||0
   const costoLabor = parseFloat(a.costo_ha_usd)||0
   const costoProds = prods.reduce((s,p) => {
@@ -1002,6 +1028,15 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                       {p.cantidad_total&&<span style={{fontSize:10,color:'var(--text-muted)'}}>· {parseFloat(p.cantidad_total).toFixed(1)} total</span>}
                       {precio&&<span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>U$S {(precio*parseFloat(p.cantidad_ha||0)).toFixed(2)}/ha</span>}
                       {eiq>0&&<span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>EIQ {eiq}</span>}
+                      {!a.descontado_almacen && (() => {
+                        const disp = stockDisponible(p)
+                        const nec  = parseFloat(p.cantidad_total)||0
+                        if (disp == null || !nec) return null
+                        const falta = nec - disp
+                        return falta > 0.001
+                          ? <span style={{fontSize:10,background:'#FAECE7',color:'#993C1D',borderRadius:20,padding:'1px 6px',fontWeight:600,whiteSpace:'nowrap'}}>⚠ comprar {falta.toFixed(1)} {p.unidad}</span>
+                          : <span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>✓ stock</span>
+                      })()}
                       {canEdit&&editando===null&&(
                         <button onClick={()=>abrirEditor(p.id, p.cantidad_ha)}
                           style={{padding:'1px 6px',border:'1px solid #B8D0D8',borderRadius:4,fontSize:9,cursor:'pointer',background:'white',color:'#2C5A6A',fontFamily:'inherit'}}>
