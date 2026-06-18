@@ -50,10 +50,9 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
   const f = (k,v) => setForm(p=>({...p,[k]:v}))
   const superficieN = parseFloat(form.superficie_ha)||0
 
-  // Stock disponible de un producto: por id de catálogo, o por nombre+marca como respaldo
+  // Stock disponible = entradas − salidas por producto + marca (igual que Almacén)
   function stockDisponible(p) {
-    if (p.producto_id && stockActual[p.producto_id] != null) return stockActual[p.producto_id]
-    if (!p.producto) return p.producto_id ? 0 : null
+    if (!p.producto) return null
     const key = p.producto.toLowerCase()
     const mk  = (p.marca||'').toLowerCase()
     let hay = false
@@ -266,12 +265,15 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
                   <select value={p.producto_id} onChange={e=>updateProd(origIdx,'producto_id',e.target.value)}
                     style={{flex:1,padding:'5px',border:'1px solid #B8D0D8',borderRadius:6,fontSize:12,fontFamily:'inherit',background:'#FDFAF4'}}>
                     <option value="">— Del catálogo —</option>
-                    {productosAlmacen.map(prod=>(
-                      <option key={prod.id} value={prod.id}>
-                        {prod.producto}{prod.marca?' · '+prod.marca:''}
-                        {stockActual[prod.id] != null ? ' ['+Number(stockActual[prod.id]).toFixed(1)+' '+prod.unidad+']' : ''}
-                      </option>
-                    ))}
+                    {productosAlmacen.map(prod=>{
+                      const st = stockDisponible({producto:prod.producto, marca:prod.marca, producto_id:prod.id})
+                      return (
+                        <option key={prod.id} value={prod.id}>
+                          {prod.producto}{prod.marca?' · '+prod.marca:''}
+                          {st != null ? ' ['+st.toFixed(1)+' '+prod.unidad+']' : ''}
+                        </option>
+                      )
+                    })}
                   </select>
                   <button type="button" onClick={()=>removeProd(origIdx)} disabled={prods.length===1}
                     style={{padding:'5px 8px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:11,cursor:'pointer',color:'#993C1D',fontFamily:'inherit',flexShrink:0}}>✕</button>
@@ -758,19 +760,10 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
     if (inserts.length) await supabase.from('almacen_movimientos').insert(inserts)
   }
 
-  // Stock disponible en almacén de un producto (por id de catálogo o nombre+marca)
+  // Stock disponible en almacén = entradas − salidas por producto + marca
+  // (igual que el módulo Almacén; producto_id no es confiable en históricos)
   function stockDisponible(p) {
-    if (p.producto_id) {
-      let hayId = false
-      const totId = movsAlm.reduce((s,m) => {
-        if (m.producto_id !== p.producto_id) return s
-        hayId = true
-        const c = parseFloat(m.cantidad)||0
-        return s + (m.tipo==='salida_aplicacion' ? -Math.abs(c) : c)
-      }, 0)
-      if (hayId) return totId
-    }
-    if (!p.producto) return p.producto_id ? 0 : null
+    if (!p.producto) return null
     const key = p.producto.toLowerCase()
     const mk  = (p.marca||'').toLowerCase()
     let hay = false
