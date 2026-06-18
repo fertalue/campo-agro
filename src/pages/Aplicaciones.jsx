@@ -1,5 +1,6 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import MapaLote from '../components/MapaLote'
 import { useAuth } from '../hooks/useAuth'
 
 const CULTIVOS    = ['Soja','Maíz','Trigo','Girasol','Sorgo']
@@ -352,7 +353,7 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
 }
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
-function generarPDF(aplic, prods, movimientosAlm) {
+function generarPDF(aplic, prods, movimientosAlm, mapImg) {
   const sup = parseFloat(aplic.superficie_ha)||0
   const costoLabor = parseFloat(aplic.costo_ha_usd)||0
   const costoProds = prods.reduce((s,p) => {
@@ -394,6 +395,7 @@ function generarPDF(aplic, prods, movimientosAlm) {
     <div style="font-size:12px;color:#888">${sup ? sup.toLocaleString('es-AR')+' ha' : '—'}</div>
   </div>
 </div>
+${mapImg?`<div style="text-align:center;margin-bottom:14px"><img src="${mapImg}" style="max-width:100%;max-height:220px;border:1px solid #D8C9A8;border-radius:6px"/></div>`:''}
 <div class="grid">
   <div class="card"><div class="lbl">Tipo</div><div class="val">${aplic.tipo_aplicacion==='barbecho'?'Barbecho':aplic.tipo_aplicacion==='presiembra'?'Presiembra':'Cultivo en pie'}</div></div>
   <div class="card"><div class="lbl">${aplic.tipo_aplicacion==='cultivo'?'Cultivo':'A sembrar'}</div><div class="val">${aplic.cultivo_actual||'—'}</div></div>
@@ -442,6 +444,101 @@ ${[...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).map((p,i)=>{
 </div>
 ${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#F5F0E8;border-radius:5px;font-size:11px"><strong>Obs:</strong> ${aplic.observaciones}</div>`:''}
 <div class="footer">Generado el ${new Date().toLocaleDateString('es-AR')} · ${aplic.quien_registro||''}</div>
+<script>window.onload=()=>window.print()</script>
+</body></html>`
+
+  const w = window.open('','_blank'); w.document.write(html); w.document.close()
+}
+
+// ── PDF Maquinista ─────────────────────────────────────────────────────────────
+function generarPDFMaquinista(aplic, prods, tancadas, mapImg) {
+  const sup = parseFloat(aplic.superficie_ha)||0
+  const prodsSorted = [...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99))
+
+  const tanRows = tancadas.filter(t => parseFloat(t.ha)>0)
+  const tablaHtml = tanRows.length > 0 ? `
+    <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:11px">
+      <thead>
+        <tr style="background:#2E4F26;color:white">
+          <th style="padding:6px 8px;text-align:left">Producto / Marca</th>
+          <th style="padding:6px 8px;text-align:center">Dosis/ha</th>
+          ${tanRows.map((t,i)=>`<th style="padding:6px 8px;text-align:right">Tancada ${i+1}<br><span style="font-weight:400;font-size:9px">${parseFloat(t.ha).toFixed(1)} ha</span></th>`).join('')}
+          <th style="padding:6px 8px;text-align:right">TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${prodsSorted.map(p => {
+          const dosis = parseFloat(p.cantidad_ha)||0
+          const totals = tanRows.map(t => dosis * parseFloat(t.ha))
+          const total  = totals.reduce((a,b)=>a+b,0)
+          return `<tr style="border-bottom:1px solid #E8D5A3">
+            <td style="padding:6px 8px;font-weight:500">${p.producto}${p.marca?' <span style="color:#8B6A4A;font-size:10px">'+p.marca+'</span>':''}</td>
+            <td style="padding:6px 8px;text-align:center;color:#555">${dosis.toFixed(3)} ${p.unidad}/ha</td>
+            ${totals.map(v=>`<td style="padding:6px 8px;text-align:right;font-weight:600">${v.toFixed(1)} ${p.unidad}</td>`).join('')}
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:#2E4F26">${total.toFixed(1)} ${p.unidad}</td>
+          </tr>`
+        }).join('')}
+        <tr style="background:#F5F0E8;font-weight:700">
+          <td colspan="2" style="padding:6px 8px">Superficie / tancada</td>
+          ${tanRows.map(t=>`<td style="padding:6px 8px;text-align:right">${parseFloat(t.ha).toFixed(1)} ha</td>`).join('')}
+          <td style="padding:6px 8px;text-align:right">${tanRows.reduce((s,t)=>s+parseFloat(t.ha),0).toFixed(1)} ha</td>
+        </tr>
+      </tbody>
+    </table>` : `
+    <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:11px">
+      <thead><tr style="background:#2E4F26;color:white">
+        <th style="padding:6px 8px;text-align:left">#</th>
+        <th style="padding:6px 8px">Producto</th>
+        <th style="padding:6px 8px">Marca</th>
+        <th style="padding:6px 8px;text-align:right">Dosis/ha</th>
+        <th style="padding:6px 8px;text-align:right">Total (${sup} ha)</th>
+      </tr></thead>
+      <tbody>
+        ${prodsSorted.map((p,i)=>{
+          const dosis = parseFloat(p.cantidad_ha)||0
+          return `<tr style="border-bottom:1px solid #E8D5A3">
+            <td style="padding:6px 8px"><strong>${i+1}</strong></td>
+            <td style="padding:6px 8px;font-weight:500">${p.producto}</td>
+            <td style="padding:6px 8px;color:#8B6A4A">${p.marca||'—'}</td>
+            <td style="padding:6px 8px;text-align:right">${dosis.toFixed(3)} ${p.unidad}/ha</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700">${(dosis*sup).toFixed(1)} ${p.unidad}</td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>`
+
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<title>Orden de trabajo — ${aplic.lote||'Sin lote'}</title>
+<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#2C1A0E;font-size:12px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;border-bottom:2px solid #4A7C3F;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.card{background:#F5F0E8;border:1px solid #D8C9A8;border-radius:5px;padding:8px 10px}
+.lbl{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#8B6A4A;font-weight:600;margin-bottom:1px}
+.val{font-size:13px;font-weight:600}
+.footer{margin-top:16px;font-size:9px;color:#999;border-top:1px solid #E8D5A3;padding-top:8px}
+@media print{body{padding:12px}}</style></head><body>
+<div class="header">
+  <div>
+    <div style="font-size:18px;font-weight:800;color:#4A7C3F">🌾 ORDEN DE TRABAJO</div>
+    <div style="font-size:11px;color:#888;margin-top:2px">${fmtFecha(aplic.fecha)} &mdash; Para el maquinista</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:20px;font-weight:700;color:#4A7C3F">${aplic.lote||'—'}</div>
+    <div style="font-size:12px;color:#888">${sup?sup.toLocaleString('es-AR')+' ha':'—'}</div>
+  </div>
+</div>
+${mapImg?`<div style="text-align:center;margin-bottom:14px"><img src="${mapImg}" style="max-width:100%;max-height:200px;border:1px solid #D8C9A8;border-radius:6px"/></div>`:''}
+<div class="grid">
+  <div class="card"><div class="lbl">Tipo de aplicación</div><div class="val">${aplic.tipo_aplicacion==='barbecho'?'Barbecho':aplic.tipo_aplicacion==='presiembra'?'Presiembra':'Cultivo en pie'}</div></div>
+  <div class="card"><div class="lbl">Cultivo</div><div class="val">${aplic.cultivo_actual||'—'}</div></div>
+  <div class="card"><div class="lbl">Superficie</div><div class="val">${sup?sup+' ha':'—'}</div></div>
+</div>
+<div style="font-size:11px;font-weight:700;color:#2E4F26;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">
+  ${tanRows.length>0?'Calculadora de tancadas':'Productos — dosis y cantidades totales'}
+</div>
+${tablaHtml}
+${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#F5F0E8;border-radius:5px;font-size:11px"><strong>Obs:</strong> ${aplic.observaciones}</div>`:''}
+<div class="footer">Generado el ${new Date().toLocaleDateString('es-AR')} &mdash; Sin costos (uso interno maquinista)</div>
 <script>window.onload=()=>window.print()</script>
 </body></html>`
 
@@ -543,6 +640,10 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
   const [editando, setEditando] = useState(null)
   const [val, setVal]           = useState('')
   const [saving, setSaving]     = useState(false)
+  const [pdfModal, setPdfModal] = useState(false)
+  const [tancadas, setTancadas] = useState([{ha:''},{ha:''}])
+  const [tipoPDF, setTipoPDF]   = useState('completo')  // 'completo' | 'maquinista'
+  const mapaRef = useRef()
   const [nuevoProd, setNuevoProd] = useState({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })
 
   function setNP(k,v) {
@@ -783,7 +884,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
 
         {/* Botones acción */}
         <div style={{display:'flex',gap:4,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end',marginLeft:8}}>
-          <button onClick={()=>onPDF(a, prods)}
+          <button onClick={()=>setPdfModal(true)}
             style={{padding:'4px 8px',background:'#4A7C3F',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
             📄
           </button>
@@ -1053,6 +1154,91 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
         {eiqTotal>0&&<div style={{background:'#E4F0F4',borderRadius:7,padding:'4px 9px',fontSize:11}}><span style={{color:'#2C5A6A'}}>EIQ: <strong>{eiqTotal.toFixed(0)}</strong>{sup>0&&<span style={{fontWeight:400}}> ({(eiqTotal/sup).toFixed(1)}/ha)</span>}</span></div>}
         {a.observaciones&&editando===null&&<div style={{fontSize:11,color:'var(--text-muted)',alignSelf:'center'}}>{a.observaciones}</div>}
       </div>
+
+      {/* ── MODAL PDF ── */}
+      {pdfModal&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={e=>e.target===e.currentTarget&&setPdfModal(false)}>
+          <div style={{background:'white',borderRadius:14,padding:20,width:'min(96vw,720px)',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.25)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:15,color:'var(--tierra)'}}>📄 Exportar PDF — {a.lote}</div>
+              <button onClick={()=>setPdfModal(false)} style={{padding:'4px 10px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:12,cursor:'pointer',color:'#993C1D'}}>Cerrar</button>
+            </div>
+
+            {/* Tipo de PDF */}
+            <div style={{display:'flex',gap:8,marginBottom:14}}>
+              {[['completo','📋 Completo (con costos)'],['maquinista','🚜 Maquinista (sin costos)']].map(([v,l])=>(
+                <button key={v} onClick={()=>setTipoPDF(v)}
+                  style={{flex:1,padding:'8px 12px',borderRadius:8,border:'2px solid',fontSize:12,cursor:'pointer',fontFamily:'inherit',
+                    background:tipoPDF===v?'#EBF4E8':'white',
+                    borderColor:tipoPDF===v?'var(--pasto)':'#D8C9A8',
+                    color:tipoPDF===v?'#2E4F26':'var(--arcilla)',fontWeight:tipoPDF===v?600:400}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Mapa */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Mapa del lote</div>
+              <MapaLote
+                ref={mapaRef}
+                lotesResaltados={a.lote?.toLowerCase().includes('3')||(a.lote?.toLowerCase().includes('casco')&&!a.lote?.toLowerCase().includes('grande'))?[1,2]:a.lote?.toLowerCase().includes('grande')||a.lote?.toLowerCase().includes('lote 3')?[3]:[1,2,3]}
+                editable={true}
+                width={Math.min(660, typeof window!=='undefined'?window.innerWidth-80:660)}
+                height={300}
+              />
+              <div style={{fontSize:10,color:'var(--text-muted)',marginTop:4}}>Tip: usá "✏ Dibujar zona parcial" para marcar solo parte del lote en el PDF.</div>
+            </div>
+
+            {/* Calculadora tancadas (solo modo maquinista) */}
+            {tipoPDF==='maquinista'&&(
+              <div style={{marginBottom:14,padding:'10px 14px',background:'#F5F0E8',borderRadius:8,border:'1px solid #D8C9A8'}}>
+                <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Calculadora de tancadas</div>
+                <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:8}}>Superficie total: <strong>{a.superficie_ha} ha</strong></div>
+                {tancadas.map((t,i)=>(
+                  <div key={i} style={{display:'flex',gap:8,alignItems:'center',marginBottom:6}}>
+                    <span style={{fontSize:11,minWidth:70,color:'var(--arcilla)'}}>Tancada {i+1}</span>
+                    <input type="number" step="0.5" min="0" value={t.ha} placeholder="ha"
+                      onChange={e=>setTancadas(ts=>ts.map((x,j)=>j===i?{...x,ha:e.target.value}:x))}
+                      style={{width:80,padding:'4px 8px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:12,fontFamily:'inherit'}}/>
+                    <span style={{fontSize:11,color:'var(--text-muted)'}}>ha</span>
+                    {tancadas.length>1&&<button onClick={()=>setTancadas(ts=>ts.filter((_,j)=>j!==i))} style={{padding:'2px 6px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:4,fontSize:10,cursor:'pointer',color:'#993C1D'}}>✕</button>}
+                  </div>
+                ))}
+                <button onClick={()=>setTancadas(ts=>[...ts,{ha:''}])}
+                  style={{padding:'4px 10px',background:'transparent',border:'1px dashed #D8C9A8',borderRadius:5,fontSize:11,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
+                  + Agregar tancada
+                </button>
+                {tancadas.some(t=>parseFloat(t.ha)>0)&&(
+                  <div style={{marginTop:8,padding:'6px 10px',background:'white',borderRadius:5,fontSize:11}}>
+                    <strong>Vista previa:</strong> {prods.sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).map(p=>(
+                      <span key={p.id} style={{marginRight:12}}>{p.producto}: {tancadas.filter(t=>parseFloat(t.ha)>0).map((t,i)=>(
+                        <span key={i}><em>T{i+1}</em>={(parseFloat(p.cantidad_ha)||0)*parseFloat(t.ha)).toFixed(1)} {p.unidad} </span>
+                      ))}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Botón generar */}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button onClick={async()=>{
+                const mapImg = await mapaRef.current?.capturar()
+                if (tipoPDF==='maquinista') {
+                  generarPDFMaquinista(a, prods, tancadas, mapImg)
+                } else {
+                  onPDF(a, prods, mapImg)
+                }
+                setPdfModal(false)
+              }} style={{padding:'8px 20px',background:'var(--pasto)',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>
+                📄 Generar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1209,7 +1395,7 @@ export default function Aplicaciones() {
                 onDelete={deleteOrden}
                 onDescontar={descontarAlmacen}
                 onRevertir={revertirDescuento}
-                onPDF={(orden,ps)=>generarPDF(orden, ps, movsAlm)}
+                onPDF={(orden,ps,mapImg)=>generarPDF(orden, ps, movsAlm, mapImg)}
               />
             )
           })}
