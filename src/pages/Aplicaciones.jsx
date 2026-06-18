@@ -50,6 +50,23 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
   const f = (k,v) => setForm(p=>({...p,[k]:v}))
   const superficieN = parseFloat(form.superficie_ha)||0
 
+  // Stock disponible de un producto: por id de catálogo, o por nombre+marca como respaldo
+  function stockDisponible(p) {
+    if (p.producto_id && stockActual[p.producto_id] != null) return stockActual[p.producto_id]
+    if (!p.producto) return p.producto_id ? 0 : null
+    const key = p.producto.toLowerCase()
+    const mk  = (p.marca||'').toLowerCase()
+    let hay = false
+    const tot = (movimientosAlm||[]).reduce((s,m) => {
+      if ((m.producto||'').toLowerCase() !== key) return s
+      if (mk && (m.marca||'').toLowerCase() !== mk) return s
+      hay = true
+      const c = parseFloat(m.cantidad)||0
+      return s + (m.tipo==='salida_aplicacion' ? -Math.abs(c) : c)
+    }, 0)
+    return hay ? tot : (p.producto_id ? 0 : null)
+  }
+
   function updateProd(i, k, v) {
     setProds(prev => prev.map((p,idx) => {
       if (idx !== i) return p
@@ -231,7 +248,7 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
             const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm)
             const costoProdHa = precio && p.cantidad_ha ? precio * parseFloat(p.cantidad_ha) : null
             const eiqProdHa   = p.eiq && p.cantidad_ha ? parseFloat(p.eiq) * parseFloat(p.cantidad_ha) : null
-            const stockDisp   = stockActual[p.producto_id] || null
+            const stockDisp   = stockDisponible(p)
 
             return (
               <div key={origIdx} style={{background:'white',borderRadius:8,padding:'10px 12px',marginBottom:8,border:'1px solid #B8D0D8'}}>
@@ -289,6 +306,15 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
                       Total: <strong>{(superficieN*parseFloat(p.cantidad_ha)).toFixed(1)} {p.unidad}</strong>
                     </span>
                   )}
+                  {p.producto && (() => {
+                    if (stockDisp == null) return <span style={{fontSize:11,color:'var(--text-muted)'}}>Sin registro en almacén</span>
+                    const necesita = superficieN > 0 && p.cantidad_ha ? superficieN*parseFloat(p.cantidad_ha) : null
+                    if (necesita == null) return <span style={{fontSize:11,color:'#2C5A6A'}}>En stock: <strong>{stockDisp.toFixed(1)} {p.unidad}</strong></span>
+                    const falta = necesita - stockDisp
+                    return falta > 0.001
+                      ? <span style={{fontSize:11,color:'#993C1D',fontWeight:600,background:'#FAECE7',borderRadius:20,padding:'1px 9px'}}>⚠ En stock {stockDisp.toFixed(1)} {p.unidad} · comprar {falta.toFixed(1)} {p.unidad}</span>
+                      : <span style={{fontSize:11,color:'#2E4F26',background:'#EBF4E8',borderRadius:20,padding:'1px 9px'}}>✓ Stock suficiente ({stockDisp.toFixed(1)} {p.unidad})</span>
+                  })()}
                   {precio ? (
                     <span style={{fontSize:11,color:'#2E4F26'}}>
                       Precio almacén: U$S {precio.toFixed(3)}/{p.unidad}
@@ -1283,12 +1309,13 @@ export default function Aplicaciones() {
     setLoading(false)
   }
 
-  // Stock actual
+  // Stock actual (por producto del catálogo)
   const stockActual = {}
   movsAlm.forEach(m => {
     if (!m.producto_id) return
+    const c = parseFloat(m.cantidad) || 0
     if (!stockActual[m.producto_id]) stockActual[m.producto_id] = 0
-    stockActual[m.producto_id] += m.tipo === 'salida_aplicacion' ? -Math.abs(m.cantidad) : m.cantidad
+    stockActual[m.producto_id] += m.tipo === 'salida_aplicacion' ? -Math.abs(c) : c
   })
 
   async function descontarAlmacen(orden) {
