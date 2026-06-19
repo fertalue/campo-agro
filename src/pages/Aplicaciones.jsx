@@ -26,6 +26,15 @@ function getPrecioUnitario(productoNombre, marca, movimientos) {
   return movs[0]?.precio_unitario || null
 }
 
+// Reparto de marcas de un producto: usa el campo `marcas` (modelo nuevo) o,
+// si no existe, la marca única con el total completo (compatibilidad).
+function marcasDe(p) {
+  if (Array.isArray(p.marcas) && p.marcas.length > 0) {
+    return p.marcas.map(b => ({ marca: b.marca || '', cantidad: parseFloat(b.cantidad)||0 }))
+  }
+  return [{ marca: p.marca || '', cantidad: parseFloat(p.cantidad_total)||0 }]
+}
+
 // ── FormAplicacion ────────────────────────────────────────────────────────────
 function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, quienRegistra, onSave, onCancel }) {
   const isEdit = !!aplic
@@ -485,16 +494,17 @@ function planificarTancadas(prods, tanRows) {
   const grupos = {}
   ;[...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).forEach(p => {
     const k = (p.producto||'').toLowerCase()
-    if (!grupos[k]) grupos[k] = { producto:p.producto, unidad:p.unidad, ordenCarga:p.orden_carga||99, brands:[] }
-    grupos[k].brands.push({ marca:p.marca||'', total:parseFloat(p.cantidad_total)||0, dosis:parseFloat(p.cantidad_ha)||0 })
+    if (!grupos[k]) grupos[k] = { producto:p.producto, unidad:p.unidad, ordenCarga:p.orden_carga||99, dosis:0, marcaMap:{} }
+    grupos[k].dosis += parseFloat(p.cantidad_ha)||0
     grupos[k].ordenCarga = Math.min(grupos[k].ordenCarga, p.orden_carga||99)
+    marcasDe(p).forEach(b => { grupos[k].marcaMap[b.marca||''] = (grupos[k].marcaMap[b.marca||'']||0) + b.cantidad })
   })
   return Object.values(grupos).sort((a,b)=>a.ordenCarga-b.ordenCarga).map(g => {
-    g.brands.sort((a,b)=>b.total-a.total)
-    const dosisTotal = g.brands.reduce((s,b)=>s+b.dosis,0)
-    const totalQty   = g.brands.reduce((s,b)=>s+b.total,0)
-    const multi      = g.brands.length > 1
-    const rem = g.brands.map(b=>({ marca:b.marca, rem:b.total }))
+    const brands = Object.entries(g.marcaMap).map(([marca,total])=>({ marca, total })).sort((a,b)=>b.total-a.total)
+    const dosisTotal = g.dosis
+    const totalQty   = brands.reduce((s,b)=>s+b.total,0)
+    const multi      = brands.length > 1
+    const rem = brands.map(b=>({ marca:b.marca, rem:b.total }))
     const porTancada = tanRows.map(t => {
       let need = dosisTotal * (parseFloat(t.ha)||0)
       const parts = []
@@ -508,7 +518,7 @@ function planificarTancadas(prods, tanRows) {
       if (need > 0.01) parts.push({ marca:'(faltante)', qty:need })
       return parts
     })
-    return { producto:g.producto, unidad:g.unidad, dosisTotal, totalQty, multi, brands:g.brands, porTancada }
+    return { producto:g.producto, unidad:g.unidad, dosisTotal, totalQty, multi, brands, porTancada }
   })
 }
 
@@ -729,6 +739,62 @@ function DividirProducto({ prod, sup, ordenId, ordenFecha, descontado, quien, on
 }
 
 // ── OrdenCard — tarjeta con edición inline campo por campo ────────────────────
+// ── RepartirMarcas ── reparte el total de un producto entre varias marcas (modelo nuevo)
+function RepartirMarcas({ prod, onSave, onCancel }) {
+  const total = parseFloat(prod.cantidad_total)||0
+  const init = (Array.isArray(prod.marcas) && prod.marcas.length>0)
+    ? prod.marcas.map(b=>({ marca:b.marca||'', cantidad:b.cantidad }))
+    : [{ marca:prod.marca||'', cantidad:total }]
+  const [rows, setRows] = useState(init)
+  const [saving, setSaving] = useState(false)
+  const si = {padding:'5px 8px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:12,fontFamily:'inherit',background:'white'}
+  const suma = rows.reduce((s,r)=>s+(parseFloat(r.cantidad)||0),0)
+  const sumaOk = Math.abs(suma-total)<0.01
+  const ok = sumaOk && rows.every(r=>(r.marca||'').trim()) && rows.length>0
+
+  function upd(i,k,v){ setRows(rs=>rs.map((r,j)=>j===i?{...r,[k]:v}:r)) }
+  function add(){ setRows(rs=>[...rs,{marca:'',cantidad:0}]) }
+  function del(i){ setRows(rs=>rs.length>1?rs.filter((_,j)=>j!==i):rs) }
+
+  async function save() {
+    if (!ok) return
+    setSaving(true)
+    const limpio = rows.map(r=>({ marca:(r.marca||'').trim(), cantidad:parseFloat(r.cantidad)||0 }))
+    const marcas = limpio.length>1 ? limpio : null
+    await supabase.from('ordenes_agroquimicos_productos').update({
+      marca: limpio[0].marca || prod.marca || null,
+      marcas,
+    }).eq('id', prod.id)
+    setSaving(false); onSave()
+  }
+
+  return (
+    <div style={{marginTop:8,padding:'10px 12px',background:'#E4F0F4',borderRadius:8,border:'1px solid #7A9EAD'}}>
+      <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',marginBottom:8}}>
+        Repartir {prod.producto} por marca — Total: {total} {prod.unidad}
+      </div>
+      {rows.map((r,i)=>(
+        <div key={i} style={{display:'flex',gap:8,alignItems:'center',marginBottom:6}}>
+          <input value={r.marca} onChange={e=>upd(i,'marca',e.target.value)} style={{...si,width:150}} placeholder="Marca"/>
+          <input type="number" step="0.1" value={r.cantidad} onChange={e=>upd(i,'cantidad',e.target.value)} style={{...si,width:90}}/>
+          <span style={{fontSize:11,color:'var(--text-muted)'}}>{prod.unidad}</span>
+          {rows.length>1&&<button onClick={()=>del(i)} style={{padding:'3px 7px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:5,fontSize:11,cursor:'pointer',color:'#993C1D'}}>✕</button>}
+        </div>
+      ))}
+      <button onClick={add} style={{padding:'3px 9px',background:'transparent',border:'1px dashed #7A9EAD',borderRadius:5,fontSize:11,cursor:'pointer',color:'#2C5A6A',fontFamily:'inherit',marginBottom:8}}>+ Agregar marca</button>
+      <div style={{fontSize:11,fontWeight:700,color:sumaOk?'#2E4F26':'#993C1D',marginBottom:8}}>
+        Suma: {suma.toFixed(1)} / {total} {prod.unidad} {sumaOk?'✓':'— debe coincidir con el total'}
+      </div>
+      <div style={{display:'flex',gap:6}}>
+        <button onClick={save} disabled={saving||!ok} style={{padding:'5px 12px',background:'var(--pasto)',color:'white',border:'none',borderRadius:5,fontSize:11,cursor:ok?'pointer':'default',fontFamily:'inherit',opacity:ok?1:0.5}}>
+          {saving?'Guardando...':'Guardar reparto'}
+        </button>
+        <button onClick={onCancel} style={{padding:'5px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:5,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
 function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh, onDelete, onDescontar, onRevertir, onPDF }) {
   const [editando, setEditando] = useState(null)
   const [val, setVal]           = useState('')
@@ -801,27 +867,26 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
     await supabase.from('almacen_movimientos').delete().eq('aplicacion_id', orden.id)
     const inserts = (pp||[])
       .filter(p => p.cantidad_total && parseFloat(p.cantidad_total) > 0)
-      .map(p => {
+      .flatMap(p => {
         const key = (p.producto||'').toLowerCase()
         const movsProd = movsAlm.filter(m => (m.producto||'').toLowerCase()===key && (m.tipo==='compra'||m.tipo==='stock_inicial'))
         const ppu = movsProd.length
           ? movsProd.reduce((s,m)=>s+(m.precio_unitario||0)*m.cantidad,0) / movsProd.reduce((s,m)=>s+m.cantidad,0)
           : null
-        const cant = parseFloat(p.cantidad_total)
-        return {
+        return marcasDe(p).filter(b => b.cantidad > 0).map(b => ({
           fecha:           orden.fecha,
           tipo:            'salida_aplicacion',
           producto_id:     p.producto_id || null,
           producto:        p.producto,
-          marca:           p.marca || null,
-          cantidad:        cant,
+          marca:           b.marca || null,
+          cantidad:        b.cantidad,
           unidad:          p.unidad,
           precio_unitario: ppu || null,
-          precio_total:    ppu ? ppu*cant : null,
+          precio_total:    ppu ? ppu*b.cantidad : null,
           aplicacion_id:   orden.id,
           quien_registro:  quien,
           observaciones:   `Aplicación: ${orden.lote||''} ${orden.fecha}`,
-        }
+        }))
       })
     if (inserts.length) await supabase.from('almacen_movimientos').insert(inserts)
   }
@@ -1098,7 +1163,9 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                     <span style={{width:20,height:20,borderRadius:'50%',background:'#2C5A6A',color:'white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{i+1}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <span style={{fontWeight:500,color:'var(--tierra)',fontSize:12}}>{p.producto}</span>
-                      {p.marca&&<span style={{color:'var(--arcilla)',fontSize:11}}> · {p.marca}</span>}
+                      {Array.isArray(p.marcas)&&p.marcas.length>1
+                        ? <span style={{color:'var(--arcilla)',fontSize:11}}> · {p.marcas.map(b=>`${parseFloat(b.cantidad).toFixed(0)} ${b.marca}`).join(' + ')}</span>
+                        : p.marca&&<span style={{color:'var(--arcilla)',fontSize:11}}> · {p.marca}</span>}
                     </div>
                     <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                       <span style={{fontSize:11,fontWeight:600}}>{p.cantidad_ha} {p.unidad}/ha</span>
@@ -1106,13 +1173,21 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                       {precio&&<span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>U$S {(precio*parseFloat(p.cantidad_ha||0)).toFixed(2)}/ha</span>}
                       {eiq>0&&<span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>EIQ {eiq}</span>}
                       {!a.descontado_almacen && (() => {
-                        const disp = stockDisponible(p)
-                        const nec  = parseFloat(p.cantidad_total)||0
-                        if (disp == null || !nec) return null
-                        const falta = nec - disp
-                        return falta > 0.001
-                          ? <span style={{fontSize:10,background:'#FAECE7',color:'#993C1D',borderRadius:20,padding:'1px 6px',fontWeight:600,whiteSpace:'nowrap'}}>⚠ comprar {falta.toFixed(1)} {p.unidad}</span>
-                          : <span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>✓ stock</span>
+                        const brs = marcasDe(p)
+                        let hadInfo = false
+                        const faltantes = brs.map(b => {
+                          const disp = stockDisponible({producto:p.producto, marca:b.marca})
+                          if (disp == null) return null
+                          hadInfo = true
+                          const falta = (b.cantidad||0) - disp
+                          return falta > 0.001 ? { marca:b.marca, falta } : null
+                        }).filter(Boolean)
+                        if (!hadInfo) return null
+                        if (faltantes.length === 0)
+                          return <span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>✓ stock</span>
+                        const multi = brs.length > 1
+                        const txt = faltantes.map(f => multi ? `${f.falta.toFixed(1)} ${f.marca}` : `${f.falta.toFixed(1)}`).join(', ')
+                        return <span style={{fontSize:10,background:'#FAECE7',color:'#993C1D',borderRadius:20,padding:'1px 6px',fontWeight:600,whiteSpace:'nowrap'}}>⚠ comprar {txt} {p.unidad}</span>
                       })()}
                       {canEdit&&editando===null&&(
                         <button onClick={()=>abrirEditor(p.id, p.cantidad_ha)}
@@ -1182,7 +1257,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                           setEditando('dividir_'+p.id)
                         }}
                           style={{padding:'4px 8px',background:'#E4F0F4',border:'1px solid #7A9EAD',borderRadius:5,fontSize:11,cursor:'pointer',color:'#2C5A6A',fontFamily:'inherit'}}>
-                          ✂ Dividir
+                          ⊞ Marcas
                         </button>
                         <button onClick={()=>eliminarProducto(p)} disabled={saving}
                           style={{padding:'4px 8px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:5,fontSize:11,cursor:'pointer',color:'#993C1D',fontFamily:'inherit'}}>
@@ -1193,8 +1268,8 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                   </div>
                 )}
                 {dividiendo && (
-                  <DividirProducto prod={p} sup={sup} ordenId={a.id} ordenFecha={a.fecha} descontado={a.descontado_almacen} quien={quien}
-                    onSave={async()=>{ setEditando(null); onRefresh() }}
+                  <RepartirMarcas prod={p}
+                    onSave={async()=>{ setEditando(null); await resincronizarMovimientos(a); onRefresh() }}
                     onCancel={cancelar}
                   />
                 )}
@@ -1479,27 +1554,27 @@ export default function Aplicaciones() {
 
     const inserts = prods
       .filter(p => p.cantidad_total && p.cantidad_total > 0)
-      .map(p => {
+      .flatMap(p => {
         const key = p.producto?.toLowerCase()
         const movsProd = (movsPorProducto[key] || []).filter(m => m.tipo === 'compra' || m.tipo === 'stock_inicial')
         const ppu = movsProd.length > 0
           ? movsProd.reduce((a,m) => a + (m.precio_unitario||0)*m.cantidad, 0) /
             movsProd.reduce((a,m) => a + m.cantidad, 0)
           : null
-        return {
+        return marcasDe(p).filter(b => b.cantidad > 0).map(b => ({
           fecha: orden.fecha,
           tipo: 'salida_aplicacion',
           producto_id: p.producto_id || null,
           producto: p.producto,
-          marca: p.marca || null,
-          cantidad: parseFloat(p.cantidad_total),
+          marca: b.marca || null,
+          cantidad: b.cantidad,
           unidad: p.unidad,
           precio_unitario: ppu || null,
-          precio_total: ppu ? ppu * parseFloat(p.cantidad_total) : null,
+          precio_total: ppu ? ppu * b.cantidad : null,
           aplicacion_id: orden.id,
           quien_registro: quien,
           observaciones: `Aplicación: ${orden.lote} ${orden.fecha}`,
-        }
+        }))
       })
 
     // Insertar movimientos de salida
