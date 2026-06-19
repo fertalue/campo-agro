@@ -512,7 +512,39 @@ function planificarTancadas(prods, tanRows) {
   })
 }
 
-function generarPDFMaquinista(aplic, prods, tancadas, mapImg) {
+// Filas a nivel marca con su reparto automático por tancada (deriva de planificarTancadas)
+function planBrandRows(prods, tanRows) {
+  const grupos = planificarTancadas(prods, tanRows)
+  const rows = []
+  grupos.forEach(g => {
+    g.brands.forEach(b => {
+      const perTan = g.porTancada.map(parts => {
+        const f = parts.find(x => x.marca === b.marca)
+        return f ? f.qty : 0
+      })
+      rows.push({ producto:g.producto, marca:b.marca, unidad:g.unidad, total:b.total, perTan })
+    })
+  })
+  return rows
+}
+
+// Reconstruye los grupos (producto + reparto por tancada) a partir de filas a nivel marca
+function gruposFromRows(rows, nTan, sup) {
+  const map = {}
+  rows.forEach(r => {
+    if (!map[r.producto]) map[r.producto] = { producto:r.producto, unidad:r.unidad, brands:[], porTancada: Array.from({length:nTan},()=>[]) }
+    const g = map[r.producto]
+    const total = r.perTan.reduce((a,b)=>a+(parseFloat(b)||0),0)
+    g.brands.push({ marca:r.marca, total })
+    r.perTan.forEach((q,i)=>{ const qn = parseFloat(q)||0; if (qn>0.001 && g.porTancada[i]) g.porTancada[i].push({ marca:r.marca, qty:qn }) })
+  })
+  return Object.values(map).map(g => {
+    const totalQty = g.brands.reduce((s,b)=>s+b.total,0)
+    return { producto:g.producto, unidad:g.unidad, brands:g.brands, porTancada:g.porTancada, multi:g.brands.length>1, totalQty, dosisTotal: sup>0?totalQty/sup:0 }
+  })
+}
+
+function generarPDFMaquinista(aplic, prods, tancadas, mapImg, gruposPlan) {
   const sup = parseFloat(aplic.superficie_ha)||0
   const prodsSorted = [...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99))
 
@@ -528,7 +560,7 @@ function generarPDFMaquinista(aplic, prods, tancadas, mapImg) {
         </tr>
       </thead>
       <tbody>
-        ${planificarTancadas(prods, tanRows).map(g => `<tr style="border-bottom:1px solid #E8D5A3;vertical-align:top">
+        ${(gruposPlan || planificarTancadas(prods, tanRows)).map(g => `<tr style="border-bottom:1px solid #E8D5A3;vertical-align:top">
             <td style="padding:6px 8px;font-weight:500">${g.producto}${(!g.multi && g.brands[0]?.marca)?' <span style="color:#8B6A4A;font-size:10px">'+g.brands[0].marca+'</span>':''}</td>
             <td style="padding:6px 8px;text-align:center;color:#555">${g.dosisTotal.toFixed(3)} ${g.unidad}/ha</td>
             ${g.porTancada.map(parts => `<td style="padding:6px 8px;text-align:right;font-weight:600">${
@@ -703,6 +735,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
   const [saving, setSaving]     = useState(false)
   const [pdfModal, setPdfModal] = useState(false)
   const [tancadas, setTancadas] = useState([{ha:''},{ha:''}])
+  const [planManual, setPlanManual] = useState(null)  // reparto editado por tancada: { sig, rows }
   const [tipoPDF, setTipoPDF]   = useState('completo')  // 'completo' | 'maquinista'
   const mapaRef = useRef()
   const [nuevoProd, setNuevoProd] = useState({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })
@@ -821,6 +854,24 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
     const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
     return s + (p.cantidad_ha ? parseFloat(p.cantidad_ha)*eiq*(sup||1) : 0)
   },0)
+
+  // ── Reparto editable por tancada (PDF maquinista) ──
+  const tanValid   = tancadas.filter(t=>parseFloat(t.ha)>0)
+  const sigTan     = tanValid.map(t=>t.ha).join(',')
+  const autoRows   = planBrandRows(prods, tanValid)
+  const manualRows = (planManual && planManual.sig===sigTan) ? planManual.rows : null
+  const planRows   = autoRows.map((r,ri)=> manualRows?.[ri] ? {...r, perTan:manualRows[ri]} : r)
+  const gruposEff  = gruposFromRows(planRows, tanValid.length, sup)
+  const planEditado = !!manualRows
+  function setCelda(ri, ti, v) {
+    setPlanManual(prev => {
+      const base = (prev && prev.sig===sigTan) ? prev.rows.map(r=>r.slice()) : autoRows.map(r=>r.perTan.slice())
+      if (!base[ri]) base[ri] = []
+      base[ri][ti] = v
+      return { sig:sigTan, rows:base }
+    })
+  }
+  function resetPlan() { setPlanManual(null) }
 
   function abrirEditor(campo, valorActual) { setEditando(campo); setVal(valorActual ?? '') }
   function cancelar() { setEditando(null); setVal('') }
@@ -1297,21 +1348,46 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                   style={{padding:'4px 10px',background:'transparent',border:'1px dashed #D8C9A8',borderRadius:5,fontSize:11,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
                   + Agregar tancada
                 </button>
-                {tancadas.some(t=>parseFloat(t.ha)>0)&&(
-                  <div style={{marginTop:8,padding:'6px 10px',background:'white',borderRadius:5,fontSize:11}}>
-                    <strong>Vista previa:</strong>
-                    {planificarTancadas(prods, tancadas.filter(t=>parseFloat(t.ha)>0)).map((g,gi)=>(
-                      <div key={gi} style={{marginTop:3}}>
-                        <span style={{fontWeight:600,color:'var(--tierra)'}}>{g.producto}</span>{!g.multi&&g.brands[0]?.marca?<span style={{color:'var(--arcilla)'}}> {g.brands[0].marca}</span>:null}:
-                        {g.porTancada.map((parts,i)=>(
-                          <span key={i} style={{marginLeft:6}}>
-                            <em>T{i+1}</em>={g.multi
-                              ? parts.map(x=>`${x.qty.toFixed(1)} ${x.marca||'—'}`).join(' + ')
-                              : (parts[0]?parts[0].qty.toFixed(1):'0')+' '+g.unidad}
-                          </span>
-                        ))}
-                      </div>
-                    ))}
+                {tanValid.length>0 && autoRows.length>0 && (
+                  <div style={{marginTop:10}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                      <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)'}}>Reparto por tancada {planEditado&&<span style={{color:'#993C1D',fontWeight:400}}>· editado</span>}</div>
+                      <button onClick={resetPlan} disabled={!planEditado}
+                        style={{padding:'3px 9px',background:planEditado?'#FFF9EE':'#F5F0E8',border:'1px solid #D8C9A8',borderRadius:6,fontSize:10,cursor:planEditado?'pointer':'default',color:'var(--arcilla)',fontFamily:'inherit'}}>↺ Recalcular automático</button>
+                    </div>
+                    <div style={{overflowX:'auto'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                        <thead>
+                          <tr style={{background:'#F0F6FA'}}>
+                            <th style={{padding:'4px 6px',textAlign:'left',fontSize:10,color:'#2C5A6A'}}>Producto · Marca</th>
+                            {tanValid.map((t,i)=><th key={i} style={{padding:'4px 6px',textAlign:'center',fontSize:10,color:'#2C5A6A'}}>T{i+1}<br/><span style={{fontWeight:400,color:'var(--text-muted)'}}>{parseFloat(t.ha).toFixed(0)} ha</span></th>)}
+                            <th style={{padding:'4px 6px',textAlign:'center',fontSize:10,color:'#2C5A6A'}}>Σ / objetivo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {planRows.map((r,ri)=>{
+                            const suma = r.perTan.reduce((a,b)=>a+(parseFloat(b)||0),0)
+                            const ok = Math.abs(suma - r.total) < 0.05
+                            return (
+                              <tr key={ri} style={{borderBottom:'1px solid #E8E0CE'}}>
+                                <td style={{padding:'3px 6px',whiteSpace:'nowrap'}}>{r.producto}{r.marca?<span style={{color:'var(--arcilla)'}}> · {r.marca}</span>:null}</td>
+                                {r.perTan.map((q,ti)=>(
+                                  <td key={ti} style={{padding:'2px 4px',textAlign:'center'}}>
+                                    <input type="number" step="0.1" value={q}
+                                      onChange={e=>setCelda(ri,ti,e.target.value)}
+                                      style={{width:58,padding:'3px 5px',border:'1px solid #D8C9A8',borderRadius:5,fontSize:11,fontFamily:'inherit',textAlign:'right'}}/>
+                                  </td>
+                                ))}
+                                <td style={{padding:'3px 6px',textAlign:'center',whiteSpace:'nowrap',color:ok?'#2E4F26':'#993C1D',fontWeight:600}}>
+                                  {suma.toFixed(1)} / {r.total.toFixed(1)} {ok?'✓':'⚠'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{fontSize:10,color:'var(--text-muted)',marginTop:4}}>Editá las cantidades por tancada. El total de cada fila debe coincidir con el objetivo (lo que lleva esa marca en todo el lote).</div>
                   </div>
                 )}
               </div>
@@ -1322,7 +1398,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
               <button onClick={async()=>{
                 const mapImg = await mapaRef.current?.capturar()
                 if (tipoPDF==='maquinista') {
-                  generarPDFMaquinista(a, prods, tancadas, mapImg)
+                  generarPDFMaquinista(a, prods, tanValid, mapImg, gruposEff)
                 } else {
                   onPDF(a, prods, mapImg)
                 }
