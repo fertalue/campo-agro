@@ -479,6 +479,39 @@ ${aplic.observaciones?`<div style="margin-top:12px;padding:8px 10px;background:#
 }
 
 // ── PDF Maquinista ─────────────────────────────────────────────────────────────
+// Agrupa productos por principio activo y reparte las marcas entre las tancadas
+// en orden (usa una marca hasta agotarla y recién ahí pasa a la siguiente).
+function planificarTancadas(prods, tanRows) {
+  const grupos = {}
+  ;[...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).forEach(p => {
+    const k = (p.producto||'').toLowerCase()
+    if (!grupos[k]) grupos[k] = { producto:p.producto, unidad:p.unidad, ordenCarga:p.orden_carga||99, brands:[] }
+    grupos[k].brands.push({ marca:p.marca||'', total:parseFloat(p.cantidad_total)||0, dosis:parseFloat(p.cantidad_ha)||0 })
+    grupos[k].ordenCarga = Math.min(grupos[k].ordenCarga, p.orden_carga||99)
+  })
+  return Object.values(grupos).sort((a,b)=>a.ordenCarga-b.ordenCarga).map(g => {
+    g.brands.sort((a,b)=>b.total-a.total)
+    const dosisTotal = g.brands.reduce((s,b)=>s+b.dosis,0)
+    const totalQty   = g.brands.reduce((s,b)=>s+b.total,0)
+    const multi      = g.brands.length > 1
+    const rem = g.brands.map(b=>({ marca:b.marca, rem:b.total }))
+    const porTancada = tanRows.map(t => {
+      let need = dosisTotal * (parseFloat(t.ha)||0)
+      const parts = []
+      for (const b of rem) {
+        if (need <= 0.001) break
+        if (b.rem <= 0.001) continue
+        const take = Math.min(b.rem, need)
+        parts.push({ marca:b.marca, qty:take })
+        b.rem -= take; need -= take
+      }
+      if (need > 0.01) parts.push({ marca:'(faltante)', qty:need })
+      return parts
+    })
+    return { producto:g.producto, unidad:g.unidad, dosisTotal, totalQty, multi, brands:g.brands, porTancada }
+  })
+}
+
 function generarPDFMaquinista(aplic, prods, tancadas, mapImg) {
   const sup = parseFloat(aplic.superficie_ha)||0
   const prodsSorted = [...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99))
@@ -495,17 +528,17 @@ function generarPDFMaquinista(aplic, prods, tancadas, mapImg) {
         </tr>
       </thead>
       <tbody>
-        ${prodsSorted.map(p => {
-          const dosis = parseFloat(p.cantidad_ha)||0
-          const totals = tanRows.map(t => dosis * parseFloat(t.ha))
-          const total  = totals.reduce((a,b)=>a+b,0)
-          return `<tr style="border-bottom:1px solid #E8D5A3">
-            <td style="padding:6px 8px;font-weight:500">${p.producto}${p.marca?' <span style="color:#8B6A4A;font-size:10px">'+p.marca+'</span>':''}</td>
-            <td style="padding:6px 8px;text-align:center;color:#555">${dosis.toFixed(3)} ${p.unidad}/ha</td>
-            ${totals.map(v=>`<td style="padding:6px 8px;text-align:right;font-weight:600">${v.toFixed(1)} ${p.unidad}</td>`).join('')}
-            <td style="padding:6px 8px;text-align:right;font-weight:700;color:#2E4F26">${total.toFixed(1)} ${p.unidad}</td>
-          </tr>`
-        }).join('')}
+        ${planificarTancadas(prods, tanRows).map(g => `<tr style="border-bottom:1px solid #E8D5A3;vertical-align:top">
+            <td style="padding:6px 8px;font-weight:500">${g.producto}${(!g.multi && g.brands[0]?.marca)?' <span style="color:#8B6A4A;font-size:10px">'+g.brands[0].marca+'</span>':''}</td>
+            <td style="padding:6px 8px;text-align:center;color:#555">${g.dosisTotal.toFixed(3)} ${g.unidad}/ha</td>
+            ${g.porTancada.map(parts => `<td style="padding:6px 8px;text-align:right;font-weight:600">${
+              parts.length===0 ? '—'
+              : g.multi
+                ? parts.map(x=>`<div><strong>${x.qty.toFixed(1)}</strong> ${g.unidad} <span style="color:#8B6A4A;font-size:9px">${x.marca||'—'}</span></div>`).join('')
+                : parts[0].qty.toFixed(1)+' '+g.unidad
+            }</td>`).join('')}
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:#2E4F26">${g.totalQty.toFixed(1)} ${g.unidad}</td>
+          </tr>`).join('')}
         <tr style="background:#F5F0E8;font-weight:700">
           <td colspan="2" style="padding:6px 8px">Superficie / tancada</td>
           ${tanRows.map(t=>`<td style="padding:6px 8px;text-align:right">${parseFloat(t.ha).toFixed(1)} ha</td>`).join('')}
@@ -1266,10 +1299,18 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                 </button>
                 {tancadas.some(t=>parseFloat(t.ha)>0)&&(
                   <div style={{marginTop:8,padding:'6px 10px',background:'white',borderRadius:5,fontSize:11}}>
-                    <strong>Vista previa:</strong> {prods.sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).map(p=>(
-                      <span key={p.id} style={{marginRight:12}}>{p.producto}: {tancadas.filter(t=>parseFloat(t.ha)>0).map((t,i)=>(
-                        <span key={i}><em>T{i+1}</em>={((parseFloat(p.cantidad_ha)||0)*parseFloat(t.ha)).toFixed(1)} {p.unidad} </span>
-                      ))}</span>
+                    <strong>Vista previa:</strong>
+                    {planificarTancadas(prods, tancadas.filter(t=>parseFloat(t.ha)>0)).map((g,gi)=>(
+                      <div key={gi} style={{marginTop:3}}>
+                        <span style={{fontWeight:600,color:'var(--tierra)'}}>{g.producto}</span>{!g.multi&&g.brands[0]?.marca?<span style={{color:'var(--arcilla)'}}> {g.brands[0].marca}</span>:null}:
+                        {g.porTancada.map((parts,i)=>(
+                          <span key={i} style={{marginLeft:6}}>
+                            <em>T{i+1}</em>={g.multi
+                              ? parts.map(x=>`${x.qty.toFixed(1)} ${x.marca||'—'}`).join(' + ')
+                              : (parts[0]?parts[0].qty.toFixed(1):'0')+' '+g.unidad}
+                          </span>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 )}
