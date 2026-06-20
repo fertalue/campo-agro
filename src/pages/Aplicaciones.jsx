@@ -740,14 +740,17 @@ function DividirProducto({ prod, sup, ordenId, ordenFecha, descontado, quien, on
 
 // ── OrdenCard — tarjeta con edición inline campo por campo ────────────────────
 // ── RepartirMarcas ── reparte el total de un producto entre varias marcas (modelo nuevo)
-function RepartirMarcas({ prod, onSave, onCancel }) {
+function RepartirMarcas({ prod, productosAlm, onSave, onCancel }) {
   const total = parseFloat(prod.cantidad_total)||0
   const init = (Array.isArray(prod.marcas) && prod.marcas.length>0)
     ? prod.marcas.map(b=>({ marca:b.marca||'', cantidad:b.cantidad }))
     : [{ marca:prod.marca||'', cantidad:total }]
   const [rows, setRows] = useState(init)
   const [saving, setSaving] = useState(false)
+  const [otra, setOtra] = useState({})   // filas en modo "escribir marca nueva"
   const si = {padding:'5px 8px',border:'1px solid #7A9EAD',borderRadius:5,fontSize:12,fontFamily:'inherit',background:'white'}
+  const norm = s => (s||'').toString().trim().toLowerCase().replace(/\s+/g,'')
+  const marcasUnicas = [...new Set((productosAlm||[]).filter(x=>norm(x.producto)===norm(prod.producto)).map(x=>x.marca).filter(Boolean))]
   const suma = rows.reduce((s,r)=>s+(parseFloat(r.cantidad)||0),0)
   const sumaOk = Math.abs(suma-total)<0.01
   const ok = sumaOk && rows.every(r=>(r.marca||'').trim()) && rows.length>0
@@ -773,14 +776,27 @@ function RepartirMarcas({ prod, onSave, onCancel }) {
       <div style={{fontSize:10,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',marginBottom:8}}>
         Repartir {prod.producto} por marca — Total: {total} {prod.unidad}
       </div>
-      {rows.map((r,i)=>(
-        <div key={i} style={{display:'flex',gap:8,alignItems:'center',marginBottom:6}}>
-          <input value={r.marca} onChange={e=>upd(i,'marca',e.target.value)} style={{...si,width:150}} placeholder="Marca"/>
+      {rows.map((r,i)=>{
+        const known  = marcasUnicas.includes(r.marca)
+        const isOtra = otra[i] ?? (!!r.marca && !known)
+        return (
+        <div key={i} style={{display:'flex',gap:8,alignItems:'center',marginBottom:6,flexWrap:'wrap'}}>
+          <select value={isOtra ? '__otra__' : r.marca}
+            onChange={e=>{ const v=e.target.value
+              if (v==='__otra__') { setOtra(o=>({...o,[i]:true})) }
+              else { setOtra(o=>({...o,[i]:false})); upd(i,'marca',v) } }}
+            style={{...si,width:160}}>
+            <option value="">— Elegir marca —</option>
+            {marcasUnicas.map(m=><option key={m} value={m}>{m}</option>)}
+            <option value="__otra__">+ Otra (escribir)</option>
+          </select>
+          {isOtra && <input value={r.marca} onChange={e=>upd(i,'marca',e.target.value)} style={{...si,width:130}} placeholder="Marca nueva" autoFocus/>}
           <input type="number" step="0.1" value={r.cantidad} onChange={e=>upd(i,'cantidad',e.target.value)} style={{...si,width:90}}/>
           <span style={{fontSize:11,color:'var(--text-muted)'}}>{prod.unidad}</span>
           {rows.length>1&&<button onClick={()=>del(i)} style={{padding:'3px 7px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:5,fontSize:11,cursor:'pointer',color:'#993C1D'}}>✕</button>}
         </div>
-      ))}
+        )
+      })}
       <button onClick={add} style={{padding:'3px 9px',background:'transparent',border:'1px dashed #7A9EAD',borderRadius:5,fontSize:11,cursor:'pointer',color:'#2C5A6A',fontFamily:'inherit',marginBottom:8}}>+ Agregar marca</button>
       <div style={{fontSize:11,fontWeight:700,color:sumaOk?'#2E4F26':'#993C1D',marginBottom:8}}>
         Suma: {suma.toFixed(1)} / {total} {prod.unidad} {sumaOk?'✓':'— debe coincidir con el total'}
@@ -1328,7 +1344,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                   </div>
                 )}
                 {dividiendo && (
-                  <RepartirMarcas prod={p}
+                  <RepartirMarcas prod={p} productosAlm={productosAlm}
                     onSave={async()=>{ setEditando(null); await resincronizarMovimientos(a); onRefresh() }}
                     onCancel={cancelar}
                   />
