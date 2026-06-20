@@ -1232,19 +1232,20 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
                       {precio&&<span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>U$S {(precio*parseFloat(p.cantidad_ha||0)).toFixed(2)}/ha</span>}
                       {eiq>0&&<span style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'1px 6px'}}>EIQ {eiq}</span>}
                       {!a.descontado_almacen && (() => {
+                        const norm = s => (s||'').toString().trim().toLowerCase().replace(/\s+/g,'')
+                        const movsProd = movsAlm.filter(m => norm(m.producto) === norm(p.producto))
+                        if (movsProd.length === 0) return null   // producto sin registro en almacén → sin badge
                         const brs = marcasDe(p)
-                        let hadInfo = false
+                        const multi = brs.length > 1
                         const faltantes = brs.map(b => {
-                          const disp = stockDisponible({producto:p.producto, marca:b.marca})
-                          if (disp == null) return null
-                          hadInfo = true
+                          const disp = movsProd
+                            .filter(m => !norm(b.marca) || norm(m.marca) === norm(b.marca))
+                            .reduce((s,m)=> s + (m.tipo==='salida_aplicacion' ? -Math.abs(parseFloat(m.cantidad)||0) : (parseFloat(m.cantidad)||0)), 0)
                           const falta = (b.cantidad||0) - disp
                           return falta > 0.001 ? { marca:b.marca, falta } : null
                         }).filter(Boolean)
-                        if (!hadInfo) return null
                         if (faltantes.length === 0)
                           return <span style={{fontSize:10,background:'#EBF4E8',color:'#2E4F26',borderRadius:20,padding:'1px 6px',whiteSpace:'nowrap'}}>✓ stock</span>
-                        const multi = brs.length > 1
                         const txt = faltantes.map(f => multi ? `${f.falta.toFixed(1)} ${f.marca}` : `${f.falta.toFixed(1)}`).join(', ')
                         return <span style={{fontSize:10,background:'#FAECE7',color:'#993C1D',borderRadius:20,padding:'1px 6px',fontWeight:600,whiteSpace:'nowrap'}}>⚠ comprar {txt} {p.unidad}</span>
                       })()}
