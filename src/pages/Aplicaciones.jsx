@@ -802,6 +802,9 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
   const [pdfModal, setPdfModal] = useState(false)
   const [tancadas, setTancadas] = useState([{ha:''},{ha:''}])
   const [planManual, setPlanManual] = useState(null)  // reparto editado por tancada: { sig, rows }
+  const [descModal, setDescModal]   = useState(false)  // modal descontar con cantidades reales
+  const [realRows, setRealRows]     = useState({})     // { [productId]: [{marca, cantidad}] }
+  const [descSaving, setDescSaving] = useState(false)
   const [tipoPDF, setTipoPDF]   = useState('completo')  // 'completo' | 'maquinista'
   const mapaRef = useRef()
   const [nuevoProd, setNuevoProd] = useState({ producto_id:'', producto:'', marca:'', cantidad_ha:'', unidad:'L', eiq:'', orden_carga:'' })
@@ -937,6 +940,54 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
     })
   }
   function resetPlan() { setPlanManual(null) }
+
+  // ── Descuento con cantidades reales ──
+  function abrirDescuento() {
+    if (prods.length === 0) { alert('Esta orden no tiene productos cargados'); return }
+    const init = {}
+    prods.forEach(p => { init[p.id] = marcasDe(p).map(b=>({ marca:b.marca, cantidad:b.cantidad })) })
+    setRealRows(init); setDescModal(true)
+  }
+  function setRealQty(pid, idx, v) {
+    setRealRows(prev => ({ ...prev, [pid]: (prev[pid]||[]).map((b,i)=> i===idx ? {...b, cantidad:v} : b) }))
+  }
+  async function confirmarDescuento() {
+    setDescSaving(true)
+    for (const p of prods) {
+      const rows = (realRows[p.id] || marcasDe(p))
+        .map(b=>({ marca:(b.marca||'').trim(), cantidad:parseFloat(b.cantidad)||0 }))
+        .filter(b=>b.cantidad>0)
+      if (rows.length === 0) continue
+      const realTotal = rows.reduce((s,b)=>s+b.cantidad,0)
+      await supabase.from('ordenes_agroquimicos_productos').update({
+        marca:          rows[0].marca || p.marca || null,
+        marcas:         rows.length>1 ? rows : null,
+        cantidad_total: realTotal,
+        cantidad_ha:    sup>0 ? parseFloat((realTotal/sup).toFixed(4)) : p.cantidad_ha,
+      }).eq('id', p.id)
+    }
+    await supabase.from('ordenes_agroquimicos').update({
+      descontado_almacen: true, fecha_descuento: new Date().toISOString().split('T')[0]
+    }).eq('id', a.id)
+    await resincronizarMovimientos({ ...a, descontado_almacen: true })
+    setDescSaving(false); setDescModal(false); onRefresh()
+  }
+
+  // ── Reordenar orden de carga con flechas (renumera 1..n) ──
+  async function moverCarga(p, dir) {
+    const sorted = [...prods].sort((x,y)=>(x.orden_carga||99)-(y.orden_carga||99))
+    const idx = sorted.findIndex(x=>x.id===p.id)
+    const j = idx + dir
+    if (j < 0 || j >= sorted.length) return
+    const reordered = [...sorted]
+    ;[reordered[idx], reordered[j]] = [reordered[j], reordered[idx]]
+    for (let k=0;k<reordered.length;k++) {
+      if ((reordered[k].orden_carga||0) !== k+1) {
+        await supabase.from('ordenes_agroquimicos_productos').update({ orden_carga:k+1 }).eq('id', reordered[k].id)
+      }
+    }
+    onRefresh()
+  }
 
   function abrirEditor(campo, valorActual) { setEditando(campo); setVal(valorActual ?? '') }
   function cancelar() { setEditando(null); setVal('') }
@@ -1084,7 +1135,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
           </button>
           {canEdit && <>
             {!a.descontado_almacen ? (
-              <button onClick={()=>onDescontar(a)} title="Descontar del almacén"
+              <button onClick={abrirDescuento} title="Descontar del almacén (editás las cantidades reales)"
                 style={{padding:'4px 8px',background:'#7A9EAD',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
                 ↓
               </button>
@@ -1160,6 +1211,14 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
               <div key={p.id||i} style={{padding:'5px 0',borderBottom:i<prods.length-1?'1px solid #B8D0D8':'none'}}>
                 {!editandoProd ? (
                   <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    {canEdit&&editando===null&&(
+                      <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0}}>
+                        <button onClick={()=>moverCarga(p,-1)} disabled={i===0} title="Subir en orden de carga"
+                          style={{width:18,height:12,border:'1px solid #B8D0D8',borderRadius:3,background:i===0?'#EEE':'#F5F5F5',cursor:i===0?'default':'pointer',fontSize:8,lineHeight:1,padding:0,color:'#2C5A6A'}}>▲</button>
+                        <button onClick={()=>moverCarga(p,1)} disabled={i===prods.length-1} title="Bajar en orden de carga"
+                          style={{width:18,height:12,border:'1px solid #B8D0D8',borderRadius:3,background:i===prods.length-1?'#EEE':'#F5F5F5',cursor:i===prods.length-1?'default':'pointer',fontSize:8,lineHeight:1,padding:0,color:'#2C5A6A'}}>▼</button>
+                      </div>
+                    )}
                     <span style={{width:20,height:20,borderRadius:'50%',background:'#2C5A6A',color:'white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{i+1}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <span style={{fontWeight:500,color:'var(--tierra)',fontSize:12}}>{p.producto}</span>
@@ -1367,6 +1426,51 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
         {eiqTotal>0&&<div style={{background:'#E4F0F4',borderRadius:7,padding:'4px 9px',fontSize:11}}><span style={{color:'#2C5A6A'}}>EIQ: <strong>{eiqTotal.toFixed(0)}</strong>{sup>0&&<span style={{fontWeight:400}}> ({(eiqTotal/sup).toFixed(1)}/ha)</span>}</span></div>}
         {a.observaciones&&editando===null&&<div style={{fontSize:11,color:'var(--text-muted)',alignSelf:'center'}}>{a.observaciones}</div>}
       </div>
+
+      {/* ── MODAL DESCONTAR (cantidades reales) ── */}
+      {descModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={e=>e.target===e.currentTarget&&setDescModal(false)}>
+          <div style={{background:'white',borderRadius:14,padding:20,width:'min(96vw,640px)',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.25)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+              <div style={{fontWeight:700,fontSize:15,color:'var(--tierra)'}}>↓ Descontar del almacén — {a.lote}</div>
+              <button onClick={()=>setDescModal(false)} style={{padding:'4px 10px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:12,cursor:'pointer',color:'#993C1D'}}>Cerrar</button>
+            </div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:12}}>Ajustá la cantidad <strong>real</strong> usada de cada producto antes de descontar. Se actualiza el stock y el costo de la aplicación.</div>
+            {prods.map(p=>{
+              const rows = realRows[p.id] || marcasDe(p)
+              const realTotal = rows.reduce((s,b)=>s+(parseFloat(b.cantidad)||0),0)
+              const plan = parseFloat(p.cantidad_total)||0
+              const dif = realTotal - plan
+              return (
+                <div key={p.id} style={{padding:'8px 10px',marginBottom:8,background:'#F9F6EE',border:'1px solid #E8D5A3',borderRadius:8}}>
+                  <div style={{fontSize:12,fontWeight:600,color:'var(--tierra)',marginBottom:6}}>{p.producto}</div>
+                  {rows.map((b,bi)=>(
+                    <div key={bi} style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                      <span style={{flex:1,fontSize:12,color:'var(--arcilla)'}}>{b.marca||'—'}</span>
+                      <input type="number" step="0.1" value={b.cantidad}
+                        onChange={e=>setRealQty(p.id,bi,e.target.value)}
+                        style={{width:90,padding:'4px 7px',border:'1px solid #B8D0D8',borderRadius:5,fontSize:12,fontFamily:'inherit',textAlign:'right'}}/>
+                      <span style={{fontSize:11,color:'var(--text-muted)',minWidth:28}}>{p.unidad}</span>
+                    </div>
+                  ))}
+                  <div style={{fontSize:10,color:Math.abs(dif)<0.05?'var(--text-muted)':dif>0?'#993C1D':'#2E4F26',marginTop:2}}>
+                    Real: <strong>{realTotal.toFixed(1)} {p.unidad}</strong> · Plan: {plan.toFixed(1)} {p.unidad}
+                    {Math.abs(dif)>=0.05 && <> · {dif>0?'+':''}{dif.toFixed(1)} {p.unidad}</>}
+                  </div>
+                </div>
+              )
+            })}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:6}}>
+              <button onClick={()=>setDescModal(false)} style={{padding:'8px 14px',background:'transparent',border:'1px solid var(--border)',borderRadius:8,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
+              <button onClick={confirmarDescuento} disabled={descSaving}
+                style={{padding:'8px 20px',background:'var(--pasto)',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:descSaving?'default':'pointer',fontFamily:'inherit',fontWeight:600,opacity:descSaving?0.6:1}}>
+                {descSaving?'Descontando...':'↓ Confirmar y descontar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL PDF ── */}
       {pdfModal&&(
