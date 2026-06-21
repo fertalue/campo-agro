@@ -818,10 +818,17 @@ export default function Ventas() {
     const vendidoLeo = viajesCat.filter(v => v.titular === 'Leo').reduce((a,b) => a + (b.neto_romaneo||0), 0)
     const viajesAlq  = viajes.filter(v => matchArr(fCampanha, v.campanha) && v.grano === grano && v.tipo === 'Alquiler')
     const entregadoAlquiler = viajesAlq.reduce((a,b) => a + (b.neto_romaneo||0), 0)
+    // Contratos por persona (tn/qq/kg -> kg). "ambos" se reparte 50/50
+    const toKgCt = ct => { const vv = ct.volumen||0; return ct.unidad==='qq' ? vv*100 : ct.unidad==='kg' ? vv : vv*1000 }
+    const ctGrano = contratos.filter(ct => matchArr(fCampanha, ct.campanha) && ct.producto === grano)
+    const ctFerKg = ctGrano.filter(ct=>ct.a_nombre==='Fer').reduce((a,c)=>a+toKgCt(c),0)
+                  + ctGrano.filter(ct=>ct.a_nombre==='ambos').reduce((a,c)=>a+toKgCt(c)/2,0)
+    const ctLeoKg = ctGrano.filter(ct=>ct.a_nombre==='Leo').reduce((a,c)=>a+toKgCt(c),0)
+                  + ctGrano.filter(ct=>ct.a_nombre==='ambos').reduce((a,c)=>a+toKgCt(c)/2,0)
     return {
       grano, cosechaTotal, alquiler, cuotaFer, cuotaLeo,
       vendidoFer, vendidoLeo, entregadoAlquiler,
-      tieneKgPersonalizado,
+      tieneKgPersonalizado, ctFerKg, ctLeoKg,
       restanteFer:      cuotaFer  - vendidoFer,
       restanteLeo:      cuotaLeo  - vendidoLeo,
       restanteAlquiler: alquiler  - entregadoAlquiler,
@@ -1505,8 +1512,8 @@ export default function Ventas() {
                   <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>{d.alquiler > 0 ? Math.round(d.entregadoAlquiler/d.alquiler*100) : 0}% entregado</div>
                 </div>
                 {[
-                  { nombre:'Fer', cuota: d.cuotaFer, vendido: d.vendidoFer, restante: d.restanteFer, col:'#4A7C3F', bg:'#F0F7EE', border:'#9DC87A' },
-                  { nombre:'Leo', cuota: d.cuotaLeo, vendido: d.vendidoLeo, restante: d.restanteLeo, col:'#C8A96E', bg:'#FAF5EC', border:'#D8C9A8' },
+                  { nombre:'Fer', cuota: d.cuotaFer, vendido: d.vendidoFer, restante: d.restanteFer, ct: d.ctFerKg, col:'#4A7C3F', bg:'#F0F7EE', border:'#9DC87A' },
+                  { nombre:'Leo', cuota: d.cuotaLeo, vendido: d.vendidoLeo, restante: d.restanteLeo, ct: d.ctLeoKg, col:'#C8A96E', bg:'#FAF5EC', border:'#D8C9A8' },
                 ].map(p => (
                   <div key={p.nombre} style={{ background: p.bg, border:`1px solid ${p.border}`, borderRadius:10, padding:'14px' }}>
                     <div style={{ fontSize:10, fontWeight:600, color: p.col, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>{p.nombre}</div>
@@ -1518,6 +1525,29 @@ export default function Ventas() {
                     </div>
                     <div style={{ height:8, background:'#E8D5A3', borderRadius:4, overflow:'hidden' }}><div style={{ height:8, borderRadius:4, background: p.col, width:`${Math.min(p.cuota > 0 ? p.vendido/p.cuota*100 : 0, 100)}%`, transition:'width .5s' }}/></div>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4, textAlign:'right' }}>{p.cuota > 0 ? Math.round(p.vendido/p.cuota*100) : 0}% vendido</div>
+                    {p.ct > 0 && (() => {
+                      const tn      = n => ((n||0)/1000).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1})+' tn'
+                      const queda   = Math.max(0, p.restante)
+                      const pend    = Math.max(0, (p.ct||0) - p.vendido)
+                      const bajo    = Math.min(pend, queda)
+                      const libre   = Math.max(0, queda - pend)
+                      const deficit = Math.max(0, pend - queda)
+                      return (
+                        <div style={{ marginTop:10, paddingTop:8, borderTop:`1px dashed ${p.border}` }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:4 }}>
+                            <span style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em' }}>De lo que queda</span>
+                            <span style={{ fontSize:11, color:'var(--text-muted)' }}>{tn(p.ct)} en contratos</span>
+                          </div>
+                          <div style={{ display:'flex', height:8, borderRadius:4, overflow:'hidden', background:'#E8D5A3' }}>
+                            <div style={{ width:`${queda > 0 ? bajo/queda*100 : 0}%`, background:p.col, transition:'width .5s' }}/>
+                          </div>
+                          <div style={{ display:'flex', justifyContent:'space-between', marginTop:4, fontSize:11 }}>
+                            <span style={{ color:p.col, fontWeight:600 }}>{tn(bajo)} bajo contrato</span>
+                            <span style={{ color: deficit > 0 ? '#993C1D' : 'var(--text-muted)' }}>{deficit > 0 ? `⚠ faltan ${tn(deficit)}` : `${tn(libre)} libre`}</span>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
