@@ -91,11 +91,27 @@ export default function Lluvias() {
   }
 
   // ── Filtrado ───────────────────────────────────────────────────────────────
-  function aplicaAlCampo(row) {
-    if (fCampo === 'promedio') return true
-    return row.campo === 'ambos' || row.campo === fCampo
-  }
-  const dataFiltradaCampo = data.filter(aplicaAlCampo)
+  // En modo "promedio" colapsamos por fecha: el valor del día es el PROMEDIO
+  // entre los campos medidos (casco / tres esquinas; "ambos" cuenta para ambos),
+  // no la suma. En casco/tres esquinas se filtra por ese campo.
+  const dataFiltradaCampo = (() => {
+    if (fCampo !== 'promedio') {
+      return data.filter(row => row.campo === 'ambos' || row.campo === fCampo)
+    }
+    const porFecha = {}
+    data.forEach(row => {
+      if (!row.fecha) return
+      if (!porFecha[row.fecha]) porFecha[row.fecha] = {}
+      const mm = row.mm || 0
+      const campos = row.campo === 'ambos' ? ['casco', 'tres esquinas'] : [row.campo || 'sin campo']
+      campos.forEach(c => { porFecha[row.fecha][c] = (porFecha[row.fecha][c] || 0) + mm })
+    })
+    return Object.entries(porFecha).map(([fecha, campos]) => {
+      const vals = Object.values(campos)
+      const prom = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+      return { fecha, mm: prom, campo: 'promedio' }
+    })
+  })()
   const dataFiltrada = dataFiltradaCampo.filter(d => {
     if (fModo === 'campanha' && fCampanha !== 'todas') return fechaEnCampanha(d.fecha, fCampanha)
     if (fModo === 'anho') return d.fecha?.startsWith(String(fAnho))
