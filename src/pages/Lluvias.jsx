@@ -211,7 +211,7 @@ export default function Lluvias() {
         <div>
           <h2>Precipitaciones</h2>
           <p style={{ fontSize:12, color:'var(--arcilla)', marginTop:2 }}>
-            {data.reduce((a,b)=>a+(b.mm||0),0).toFixed(0)} mm histórico · {data.length} eventos · {campoLabel}
+            {dataFiltradaCampo.reduce((a,b)=>a+(b.mm||0),0).toFixed(0)} mm histórico · {dataFiltradaCampo.length} eventos · {campoLabel}
           </p>
         </div>
         {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(v=>!v)}>
