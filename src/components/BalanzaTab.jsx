@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
-// Destinatarios del ticket por WhatsApp.
-// Formato wa.me: solo dígitos, con 549 (celular Argentina). Editables acá.
+// Destinatarios del ticket por WhatsApp (formato wa.me: solo dígitos, 549 para celular AR).
 const DESTINATARIOS = [
   { nombre: 'Fer', tel: '5493525628768' },
   { nombre: 'Leo', tel: '5493525621234' },
 ]
+
+const LS_KEY  = 'balanza_pesajes_v1'
+const LS_SEQ  = 'balanza_local_seq'
 
 const fmtKg = n => (n || n === 0) ? Math.round(n).toLocaleString('es-AR') + ' kg' : '—'
 const nowHHMM = () => new Date().toTimeString().slice(0, 5)
@@ -17,18 +19,17 @@ function netoDe(p) {
   const t = parseFloat(p.tara), b = parseFloat(p.kilos_bruto)
   return (!isNaN(t) && !isNaN(b)) ? b - t : null
 }
-
 function fmtFechaHora(fecha, hora) {
   let s = ''
   if (fecha) s += new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
   if (hora)  s += ' ' + String(hora).slice(0, 5)
   return s.trim()
 }
-
 function ticketTexto(p) {
   const neto = netoDe(p)
+  const nro  = p.ticket_numero ? `N° ${p.ticket_numero}` : `Borrador ${p.local_num || ''}`
   const L = []
-  L.push(`TICKET DE SALIDA  N° ${p.ticket_numero ?? '—'}`)
+  L.push(`TICKET DE SALIDA  ${nro}`)
   L.push(`Salida del campo — ${fmtFechaHora(p.fecha, p.hora_salida)}`)
   L.push('------------------------------')
   if (p.cliente)    L.push(`Cliente: ${p.cliente}`)
@@ -45,126 +46,179 @@ function ticketTexto(p) {
   if (p.quien_peso) L.push(`Pesó: ${p.quien_peso}`)
   return L.join('\n')
 }
-
 const waLink = (tel, texto) => `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
+
+// localStorage
+const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
+const persist   = (arr) => { try { localStorage.setItem(LS_KEY, JSON.stringify(arr.slice(0, 300))) } catch { /* lleno */ } }
+const nextSeq   = () => { const n = (parseInt(localStorage.getItem(LS_SEQ) || '0', 10) || 0) + 1; try { localStorage.setItem(LS_SEQ, String(n)) } catch {} ; return n }
+
+// columnas que se mandan a la base (no estado/viaje_id/ncp: los maneja la oficina)
+function dbPayload(rec) {
+  return {
+    client_uuid: rec.client_uuid,
+    fecha: rec.fecha, hora_salida: rec.hora_salida || null,
+    campanha: rec.campanha || null, grano: rec.grano || null, titular: rec.titular || null,
+    cliente: rec.cliente || null, patente: rec.patente || null,
+    transporte: rec.transporte || null, chofer: rec.chofer || null,
+    tara: rec.tara ?? null, kilos_bruto: rec.kilos_bruto ?? null, kilos_neto: rec.kilos_neto ?? null,
+    observaciones: rec.observaciones || null, quien_peso: rec.quien_peso || null, created_by: rec.created_by || null,
+  }
+}
 
 export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPRADORES = [], CAMPANHAS = [] }) {
   const { user, displayName } = useAuth()
-  const [pesajes, setPesajes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
+  const [online, setOnline]   = useState(navigator.onLine)
+  const [list, setList]       = useState(loadLocal())   // fuente única: cache servidor + pendientes locales
+  const [syncing, setSyncing] = useState(false)
   const [ticket, setTicket]   = useState(null)
-  const [editId, setEditId]   = useState(null)   // null = alta nueva; id = editando ese pesaje
+  const [editId, setEditId]   = useState(null)          // client_uuid en edición
+
+  const listRef = useRef(list)
+  useEffect(() => { listRef.current = list }, [list])
+
+  function setAndPersist(updater) {
+    setList(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      persist(next); listRef.current = next; return next
+    })
+  }
 
   const empty = {
-    fecha:        today(),
-    hora_salida:  nowHHMM(),
-    campanha:     CAMPANHAS[0] || '25-26',
-    grano:        GRANOS[0] || '',
-    titular:      'Fer',
-    cliente:      '',
-    patente:      '',
-    transporte:   '',
-    chofer:       '',
-    tara:         '',
-    kilos_bruto:  '',
-    observaciones:'',
+    fecha: today(), hora_salida: nowHHMM(), campanha: CAMPANHAS[0] || '25-26',
+    grano: GRANOS[0] || '', titular: 'Fer', cliente: '', patente: '',
+    transporte: '', chofer: '', tara: '', kilos_bruto: '', observaciones: '',
   }
   const [form, setForm] = useState(empty)
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
   const taraN  = parseFloat(form.tara)
   const brutoN = parseFloat(form.kilos_bruto)
   const neto   = (!isNaN(taraN) && !isNaN(brutoN)) ? brutoN - taraN : null
   const valido = form.patente.trim() && !isNaN(taraN) && taraN > 0
 
-  useEffect(() => { fetchPesajes() }, [])
+  const pendientes = list.filter(r => r._sync === 'pending').length
 
-  async function fetchPesajes() {
-    setLoading(true)
-    const { data } = await supabase
-      .from('granos_pesajes')
-      .select('*')
-      .order('ticket_numero', { ascending: false })
-      .limit(80)
-    setPesajes(data || [])
-    setLoading(false)
+  // ── Servidor: traer y cachear ──
+  async function fetchServer() {
+    if (!navigator.onLine) return
+    const { data, error } = await supabase.from('granos_pesajes').select('*').order('ticket_numero', { ascending: false }).limit(200)
+    if (error || !data) return
+    setAndPersist(prev => {
+      const map = {}
+      prev.forEach(l => { if (l.client_uuid) map[l.client_uuid] = l })
+      data.forEach(s => {
+        if (!s.client_uuid) return
+        const ex = map[s.client_uuid]
+        if (ex && ex._sync === 'pending') return           // conservar edición local sin sincronizar
+        map[s.client_uuid] = { ...s, _sync: 'synced', _ts: ex?._ts || Date.parse(s.created_at) || Date.now(), local_num: ex?.local_num }
+      })
+      return Object.values(map)
+    })
   }
+
+  // ── Sincronizar pendientes ──
+  async function syncPendientes() {
+    if (!navigator.onLine) return
+    const pend = listRef.current.filter(l => l._sync === 'pending')
+    if (pend.length === 0) { fetchServer(); return }
+    setSyncing(true)
+    for (const rec of pend) {
+      const { data: saved, error } = await supabase.from('granos_pesajes')
+        .upsert(dbPayload(rec), { onConflict: 'client_uuid' }).select().single()
+      if (!error && saved) {
+        setAndPersist(prev => prev.map(l => l.client_uuid === rec.client_uuid
+          ? { ...l, id: saved.id, ticket_numero: saved.ticket_numero, estado: saved.estado, _sync: 'synced' } : l))
+      }
+    }
+    setSyncing(false)
+    fetchServer()
+  }
+
+  useEffect(() => {
+    if (navigator.onLine) { syncPendientes() }   // al montar: sincroniza + refresca
+    const on  = () => { setOnline(true);  syncPendientes() }
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, []) // eslint-disable-line
 
   function nuevo() { setEditId(null); setForm({ ...empty, fecha: today(), hora_salida: nowHHMM() }) }
 
-  function editar(p) {
-    setEditId(p.id)
+  function editar(r) {
+    setEditId(r.client_uuid)
     setForm({
-      fecha:        p.fecha || today(),
-      hora_salida:  p.hora_salida ? String(p.hora_salida).slice(0, 5) : nowHHMM(),
-      campanha:     p.campanha || CAMPANHAS[0] || '25-26',
-      grano:        p.grano || GRANOS[0] || '',
-      titular:      p.titular || 'Fer',
-      cliente:      p.cliente || '',
-      patente:      p.patente || '',
-      transporte:   p.transporte || '',
-      chofer:       p.chofer || '',
-      tara:         p.tara ?? '',
-      kilos_bruto:  p.kilos_bruto ?? '',
-      observaciones:p.observaciones || '',
+      fecha: r.fecha || today(), hora_salida: r.hora_salida ? String(r.hora_salida).slice(0, 5) : nowHHMM(),
+      campanha: r.campanha || CAMPANHAS[0] || '25-26', grano: r.grano || GRANOS[0] || '', titular: r.titular || 'Fer',
+      cliente: r.cliente || '', patente: r.patente || '', transporte: r.transporte || '', chofer: r.chofer || '',
+      tara: r.tara ?? '', kilos_bruto: r.kilos_bruto ?? '', observaciones: r.observaciones || '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function guardar() {
+  function guardar() {
     if (!valido) return
-    setSaving(true)
-    const payload = {
-      fecha:        form.fecha,
-      hora_salida:  form.hora_salida || null,
-      campanha:     form.campanha || null,
-      grano:        form.grano || null,
-      titular:      form.titular || null,
-      cliente:      form.cliente.trim() || null,
-      patente:      form.patente.trim().toUpperCase(),
-      transporte:   form.transporte.trim() || null,
-      chofer:       form.chofer.trim() || null,
-      tara:         isNaN(taraN) ? null : taraN,
-      kilos_bruto:  isNaN(brutoN) ? null : brutoN,
-      kilos_neto:   neto,
-      observaciones:form.observaciones.trim() || null,
+    const prev = editId ? list.find(r => r.client_uuid === editId) : null
+    const rec = {
+      client_uuid: prev?.client_uuid || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
+      local_num:   prev?.local_num   || nextSeq(),
+      id:          prev?.id,
+      ticket_numero: prev?.ticket_numero,
+      _ts:         prev?._ts || Date.now(),
+      _sync:       'pending',
+      fecha: form.fecha, hora_salida: form.hora_salida || null,
+      campanha: form.campanha || null, grano: form.grano || null, titular: form.titular || null,
+      cliente: form.cliente.trim() || null, patente: form.patente.trim().toUpperCase() || null,
+      transporte: form.transporte.trim() || null, chofer: form.chofer.trim() || null,
+      tara: isNaN(taraN) ? null : taraN, kilos_bruto: isNaN(brutoN) ? null : brutoN, kilos_neto: neto,
+      observaciones: form.observaciones.trim() || null,
+      quien_peso: prev?.quien_peso || displayName || null,
+      created_by: prev?.created_by || user?.id || null,
+      estado: prev?.estado || 'pendiente_cp',
     }
-    let result
-    if (editId) {
-      result = await supabase.from('granos_pesajes').update(payload).eq('id', editId).select().single()
-    } else {
-      result = await supabase.from('granos_pesajes')
-        .insert({ ...payload, estado: 'pendiente_cp', quien_peso: displayName || null, created_by: user?.id || null })
-        .select().single()
-    }
-    setSaving(false)
-    if (result.error) { alert('Error al guardar: ' + result.error.message); return }
-    const saved = result.data
+    setAndPersist(p => {
+      const without = p.filter(r => r.client_uuid !== rec.client_uuid)
+      return [rec, ...without]
+    })
     nuevo()
-    fetchPesajes()
-    // Abrir el ticket sólo si la pesada está completa (tiene neto)
-    if (saved && saved.kilos_neto != null && saved.kilos_neto > 0) setTicket(saved)
+    if (rec.kilos_neto != null && rec.kilos_neto > 0) setTicket(rec)
+    if (navigator.onLine) setTimeout(syncPendientes, 50)
   }
 
   async function compartir(texto) {
     if (navigator.share) { try { await navigator.share({ text: texto }) } catch { /* cancelado */ } }
     else { copiar(texto) }
   }
-  function copiar(texto) {
-    if (navigator.clipboard) { navigator.clipboard.writeText(texto); alert('Ticket copiado') }
-  }
+  function copiar(texto) { if (navigator.clipboard) { navigator.clipboard.writeText(texto); alert('Ticket copiado') } }
 
+  const ordenada = [...list].sort((a, b) => (b._ts || 0) - (a._ts || 0))
+  const enProceso = list.filter(r => netoDe(r) == null).length
   const si = { width: '100%' }
-  const enProceso = pesajes.filter(p => netoDe(p) == null).length
 
   return (
     <div>
-      {/* ── Formulario de pesaje (alta / edición) ── */}
+      {/* ── Barra de estado offline / sync ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+        background: online ? '#EBF4E8' : '#F5EDD8', border: `1px solid ${online ? '#9DC87A' : '#C8A96E'}` }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: online ? '#2E4F26' : '#6B3E22' }}>
+          {online ? '🟢 En línea' : '🔴 Sin conexión — se guarda en la tablet'}
+        </span>
+        {pendientes > 0 && (
+          <span style={{ fontSize: 12, color: '#6B3E22' }}>· {pendientes} sin sincronizar</span>
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button onClick={syncPendientes} disabled={!online || syncing}
+            className="btn btn-secondary btn-sm" style={{ opacity: (!online || syncing) ? 0.5 : 1 }}>
+            {syncing ? 'Sincronizando...' : pendientes > 0 ? `Sincronizar (${pendientes})` : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Formulario ── */}
       {canEdit ? (
         <div className="card mb-3" style={{ background: editId ? '#FFF9EE' : '#F0F6FA', borderColor: editId ? '#C8A96E' : '#B8D0D8' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h3 style={{ margin: 0 }}>{editId ? `Editar pesaje N° ${pesajes.find(p => p.id === editId)?.ticket_numero ?? ''}` : 'Registrar salida (balanza)'}</h3>
+            <h3 style={{ margin: 0 }}>{editId ? 'Editar pesaje' : 'Registrar salida (balanza)'}</h3>
             {editId && <button onClick={nuevo} className="btn btn-secondary btn-sm">Cancelar edición</button>}
           </div>
 
@@ -175,7 +229,6 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
               <div className="field"><label className="label">Hora salida</label>
                 <input className="input" type="time" value={form.hora_salida} onChange={e => f('hora_salida', e.target.value)} style={si} /></div>
             </div>
-
             <div className="grid-2">
               <div className="field"><label className="label">Patente / Dominio *</label>
                 <input className="input" value={form.patente} onChange={e => f('patente', e.target.value)} placeholder="AA123BB" style={{ ...si, textTransform: 'uppercase' }} /></div>
@@ -184,7 +237,6 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
                 <datalist id="bz-clientes">{COMPRADORES.map(c => <option key={c} value={c} />)}</datalist>
               </div>
             </div>
-
             <div className="grid-2">
               <div className="field"><label className="label">Titular</label>
                 <input className="input" value={form.titular} onChange={e => f('titular', e.target.value)} list="bz-titulares" style={si} />
@@ -196,7 +248,6 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
                 </select>
               </div>
             </div>
-
             <div className="grid-2">
               <div className="field"><label className="label">Campaña</label>
                 <select className="select" value={form.campanha} onChange={e => f('campanha', e.target.value)} style={si}>
@@ -206,14 +257,12 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
               <div className="field"><label className="label">Transporte</label>
                 <input className="input" value={form.transporte} onChange={e => f('transporte', e.target.value)} placeholder="(opcional)" style={si} /></div>
             </div>
-
             <div className="field"><label className="label">Chofer</label>
               <input className="input" value={form.chofer} onChange={e => f('chofer', e.target.value)} placeholder="(opcional)" style={si} /></div>
 
-            {/* Pesada */}
             <div style={{ background: '#FFFFFF', border: '1px solid #B8D0D8', borderRadius: 8, padding: '12px 14px' }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--lluvia)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>Pesada</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>Podés cargar solo la <strong>tara</strong> ahora y completar el <strong>bruto</strong> después (botón Editar en la lista).</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>Podés cargar solo la <strong>tara</strong> ahora y completar el <strong>bruto</strong> después.</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                 <div className="field"><label className="label">Tara (kg) *</label>
                   <input className="input" type="number" value={form.tara} onChange={e => f('tara', e.target.value)} style={si} /></div>
@@ -229,8 +278,8 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
               <input className="input" value={form.observaciones} onChange={e => f('observaciones', e.target.value)} placeholder="(opcional)" style={si} /></div>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={guardar} disabled={saving || !valido}>
-                {saving ? 'Guardando...' : editId ? 'Guardar cambios' : (neto != null ? 'Guardar y generar ticket' : 'Guardar (falta bruto)')}
+              <button className="btn btn-primary" onClick={guardar} disabled={!valido}>
+                {editId ? 'Guardar cambios' : (neto != null ? 'Guardar y generar ticket' : 'Guardar (falta bruto)')}
               </button>
               {!valido && <span style={{ fontSize: 11, color: 'var(--arcilla)' }}>Cargá al menos patente y tara.</span>}
             </div>
@@ -242,52 +291,50 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
         </div>
       )}
 
-      {/* ── Lista de pesajes ── */}
-      {enProceso > 0 && (
-        <div style={{ fontSize: 12, color: '#6B3E22', marginBottom: 8 }}>
-          <strong>{enProceso}</strong> en proceso (falta bruto)
-        </div>
-      )}
+      {/* ── Lista ── */}
+      {enProceso > 0 && <div style={{ fontSize: 12, color: '#6B3E22', marginBottom: 8 }}><strong>{enProceso}</strong> en proceso (falta bruto)</div>}
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-        {loading
-          ? <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Cargando...</div>
-          : pesajes.length === 0
+        {ordenada.length === 0
           ? <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Todavía no hay pesajes cargados.</div>
           : <table className="vt-tbl">
               <thead><tr>
-                <th>Ticket</th><th>Fecha / hora</th><th>Patente</th><th>Cliente</th><th>Grano</th><th>Titular</th>
+                <th>Ticket</th><th>Fecha / hora</th><th>Patente</th><th>Cliente</th><th>Grano</th>
                 <th style={{ textAlign: 'right' }}>Tara</th><th style={{ textAlign: 'right' }}>Bruto</th><th style={{ textAlign: 'right' }}>Neto</th>
                 <th>Estado</th>{canEdit && <th></th>}
               </tr></thead>
               <tbody>
-                {pesajes.map(p => {
-                  const n = netoDe(p)
+                {ordenada.map(r => {
+                  const n = netoDe(r)
                   const faltaBruto = n == null
+                  const pend = r._sync === 'pending'
                   return (
-                    <tr key={p.id} style={faltaBruto ? { background: '#FFF9EE' } : undefined}>
-                      <td style={{ fontWeight: 600, color: 'var(--tierra)' }}>N° {p.ticket_numero}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{fmtFechaHora(p.fecha, p.hora_salida)}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{p.patente || '—'}</td>
-                      <td>{p.cliente || '—'}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{p.grano || '—'}</td>
-                      <td>{p.titular || '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(p.tara)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(p.kilos_bruto)}</td>
+                    <tr key={r.client_uuid} style={faltaBruto || pend ? { background: '#FFF9EE' } : undefined}>
+                      <td style={{ fontWeight: 600, color: 'var(--tierra)' }}>{r.ticket_numero ? `N° ${r.ticket_numero}` : <span style={{ color: 'var(--arcilla)' }}>Borrador {r.local_num}</span>}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{fmtFechaHora(r.fecha, r.hora_salida)}</td>
+                      <td style={{ fontFamily: 'monospace' }}>{r.patente || '—'}</td>
+                      <td>{r.cliente || '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{r.grano || '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(r.tara)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(r.kilos_bruto)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmtKg(n)}</td>
                       <td>
-                        <span className={`cc ${faltaBruto ? 'chip-amber' : p.estado === 'con_cp' ? 'chip-green' : 'chip-sky'}`}>
-                          {faltaBruto ? '⏳ Falta bruto' : p.estado === 'con_cp' ? '✓ Con CP' : 'Pendiente CP'}
-                        </span>
+                        {pend
+                          ? <span className="cc chip-amber">⏱ Sin sincronizar</span>
+                          : faltaBruto
+                          ? <span className="cc chip-amber">⏳ Falta bruto</span>
+                          : r.estado === 'con_cp'
+                          ? <span className="cc chip-green">✓ Con CP</span>
+                          : <span className="cc chip-sky">Pendiente CP</span>}
                       </td>
                       {canEdit && (
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => editar(p)}
+                            <button onClick={() => editar(r)}
                               style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--arcilla)', whiteSpace: 'nowrap' }}>
                               {faltaBruto ? '+ Bruto' : 'Editar'}
                             </button>
                             {!faltaBruto && (
-                              <button onClick={() => setTicket(p)}
+                              <button onClick={() => setTicket(r)}
                                 style={{ background: 'var(--pasto)', border: '1px solid var(--pasto)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: 'white', whiteSpace: 'nowrap' }}>
                                 Ticket
                               </button>
@@ -305,14 +352,21 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
       {/* ── Modal ticket ── */}
       {ticket && (() => {
         const texto = ticketTexto(ticket)
+        const sinSync = ticket._sync === 'pending'
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={e => e.target === e.currentTarget && setTicket(null)}>
             <div style={{ background: 'white', borderRadius: 14, padding: 20, width: 'min(96vw, 460px)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,0.25)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--tierra)' }}>Ticket N° {ticket.ticket_numero}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--tierra)' }}>{ticket.ticket_numero ? `Ticket N° ${ticket.ticket_numero}` : `Borrador ${ticket.local_num}`}</div>
                 <button onClick={() => setTicket(null)} style={{ padding: '4px 10px', background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#993C1D' }}>Cerrar</button>
               </div>
+
+              {sinSync && (
+                <div style={{ fontSize: 11, color: '#6B3E22', background: '#F5EDD8', border: '1px solid #C8A96E', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
+                  Sin sincronizar todavía. El número definitivo se asigna al conectarse. {online ? 'Tocá "Sincronizar" arriba.' : 'Se sincroniza solo cuando vuelva internet.'}
+                </div>
+              )}
 
               <pre style={{ background: '#F9F6EE', border: '1px solid #E8D5A3', borderRadius: 8, padding: '12px 14px', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#3B2E1E', margin: 0 }}>{texto}</pre>
 
