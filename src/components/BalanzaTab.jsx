@@ -275,8 +275,8 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
                       <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(p.kilos_bruto)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmtKg(n)}</td>
                       <td>
-                        <span className={`cc ${faltaBruto ? 'chip-amber' : 'chip-sky'}`}>
-                          {faltaBruto ? '⏳ Falta bruto' : 'Pendiente CP'}
+                        <span className={`cc ${faltaBruto ? 'chip-amber' : p.estado === 'con_cp' ? 'chip-green' : 'chip-sky'}`}>
+                          {faltaBruto ? '⏳ Falta bruto' : p.estado === 'con_cp' ? '✓ Con CP' : 'Pendiente CP'}
                         </span>
                       </td>
                       {canEdit && (

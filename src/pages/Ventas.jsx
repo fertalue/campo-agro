@@ -198,6 +198,25 @@ function FormViaje({ onSave, onCancel }) {
   const [leyendoIA, setLeyendoIA] = useState(false)
   const [iaMsg, setIaMsg]         = useState('')
   const fileRef = useRef()
+  const [pesajes, setPesajes] = useState([])
+  const [pesajeId, setPesajeId] = useState('')
+  useEffect(() => {
+    supabase.from('granos_pesajes').select('*').eq('estado', 'pendiente_cp').order('ticket_numero', { ascending: false })
+      .then(({ data }) => setPesajes(data || []))
+  }, [])
+  const normP = s => (s || '').toUpperCase().replace(/\s+/g, '')
+  const sugeridoPz = (!pesajeId && form.patente) ? pesajes.find(p => normP(p.patente) === normP(form.patente)) : null
+  function vincularPesaje(id) {
+    setPesajeId(id)
+    const pz = pesajes.find(p => p.id === id)
+    if (!pz) return
+    setForm(prev => ({
+      ...prev,
+      patente: prev.patente || pz.patente || '',
+      bruto:   pz.kilos_bruto != null ? String(pz.kilos_bruto) : prev.bruto,
+      tara:    pz.tara != null ? String(pz.tara) : prev.tara,
+    }))
+  }
 
   const neto = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
   const dif  = (parseFloat(form.kg_descargados)||0) - neto
@@ -247,7 +266,7 @@ function FormViaje({ onSave, onCancel }) {
 
   async function submit(e) {
     e.preventDefault(); setSaving(true)
-    await supabase.from('granos_viajes').insert({
+    const { data: nuevoViaje } = await supabase.from('granos_viajes').insert({
       ...form,
       bruto: parseFloat(form.bruto)||null, tara: parseFloat(form.tara)||null,
       neto: neto||null, kg_descargados: parseFloat(form.kg_descargados)||null,
@@ -259,7 +278,12 @@ function FormViaje({ onSave, onCancel }) {
       h_pct: parseFloat(form.h_pct)||null,
       kg_sin_contrato: parseFloat(form.kg_sin_contrato)||null,
       flete_pagador: form.flete_pagador || null,
-    })
+    }).select().single()
+    if (pesajeId && nuevoViaje) {
+      await supabase.from('granos_pesajes')
+        .update({ viaje_id: nuevoViaje.id, estado: 'con_cp', ncp: form.ncp || null })
+        .eq('id', pesajeId)
+    }
     setSaving(false); onSave()
   }
 
@@ -326,6 +350,29 @@ function FormViaje({ onSave, onCancel }) {
           <div className="field"><label className="label">Flete pagador</label>{inp('flete_pagador','text','Tecnocampo S.A.')}</div>
         </div>
         <div className="field"><label className="label">Transporte / Chofer</label>{inp('transporte')}</div>
+
+        {/* Pesaje de balanza */}
+        <div style={{ background:'#EAF2F8', border:'1px solid #7A9EAD', borderRadius:8, padding:'12px 14px' }}>
+          <div style={{ fontSize:11, fontWeight:500, color:'#2C5A6A', letterSpacing:'0.05em', textTransform:'uppercase', marginBottom:8 }}>Pesaje de balanza (opcional)</div>
+          <select className="select" value={pesajeId}
+            onChange={e => e.target.value ? vincularPesaje(e.target.value) : setPesajeId('')} style={{ width:'100%' }}>
+            <option value="">— Sin vincular —</option>
+            {pesajes.map(p => {
+              const n = (p.kilos_bruto != null && p.tara != null) ? p.kilos_bruto - p.tara : null
+              return <option key={p.id} value={p.id}>N° {p.ticket_numero} · {p.patente || 's/patente'} · {fmtFecha(p.fecha)}{n != null ? ` · ${(n/1000).toFixed(1)} tn` : ' · sin bruto'}</option>
+            })}
+          </select>
+          {sugeridoPz && (
+            <div style={{ marginTop:6, fontSize:11, color:'#2C5A6A' }}>
+              Coincide por patente:{' '}
+              <button type="button" onClick={() => vincularPesaje(sugeridoPz.id)}
+                style={{ background:'#E4F0F4', border:'1px solid #7A9EAD', borderRadius:5, padding:'2px 8px', fontSize:11, cursor:'pointer', color:'#2C5A6A', fontFamily:'inherit' }}>
+                Vincular N° {sugeridoPz.ticket_numero}
+              </button>
+            </div>
+          )}
+          {pesajeId && <div style={{ marginTop:6, fontSize:11, color:'var(--musgo)' }}>✓ Se traen los kilos de balanza. Al guardar, sale de "pendientes" en la Balanza.</div>}
+        </div>
 
         {/* Pesada campo */}
         <div style={{ background:'#F0F6FA', border:'1px solid #B8D0D8', borderRadius:8, padding:'12px 14px' }}>
