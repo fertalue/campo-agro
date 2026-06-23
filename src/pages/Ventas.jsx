@@ -534,11 +534,6 @@ function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
           )}
         </div>
       )}
-
-      {/* ─────────── BALANZA ─────────── */}
-      {tab === 'balanza' && (
-        <BalanzaTab canEdit={puedeEditar_} GRANOS={GRANOS} TITULARES={TITULARES} COMPRADORES={COMPRADORES} CAMPANHAS={CAMPANHAS} />
-      )}
     </div>
   )
 }
@@ -1562,6 +1557,11 @@ export default function Ventas() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ─────────── BALANZA ─────────── */}
+      {tab === 'balanza' && (
+        <BalanzaTab canEdit={puedeEditar_} GRANOS={GRANOS} TITULARES={TITULARES} COMPRADORES={COMPRADORES} CAMPANHAS={CAMPANHAS} />
       )}
     </div>
   )
