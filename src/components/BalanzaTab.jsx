@@ -113,10 +113,12 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
     if (error || !data) return
     setAndPersist(prev => {
       const map = {}
-      prev.forEach(l => { if (l.client_uuid) map[l.client_uuid] = l })
+      // Conservar solo los pendientes locales (aún no subidos).
+      // Los sincronizados que ya NO estén en el servidor se eliminan (borrados desde otro dispositivo).
+      prev.forEach(l => { if (l._sync === 'pending') map[l.client_uuid] = l })
       data.forEach(s => {
         if (!s.client_uuid) return
-        const ex = map[s.client_uuid]
+        const ex = prev.find(l => l.client_uuid === s.client_uuid)
         if (ex && ex._sync === 'pending') return           // conservar edición local sin sincronizar
         map[s.client_uuid] = { ...s, _sync: 'synced', _ts: ex?._ts || Date.parse(s.created_at) || Date.now(), local_num: ex?.local_num }
       })
