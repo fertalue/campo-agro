@@ -77,6 +77,10 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
   const [viajes, setViajes]   = useState([])
   const [viajeQ, setViajeQ]   = useState('')
   const [linking, setLinking] = useState(false)
+  const [delP, setDelP]       = useState(null)          // pesaje a eliminar
+  const [delPwd, setDelPwd]   = useState('')
+  const [delErr, setDelErr]   = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const listRef = useRef(list)
   useEffect(() => { listRef.current = list }, [list])
@@ -175,6 +179,21 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
     await supabase.from('granos_pesajes').update({ viaje_id: v.id, estado: 'con_cp', ncp: v.ncp || null }).eq('id', linkP.id)
     setLinking(false); setLinkP(null)
     fetchServer()
+  }
+
+  function pedirEliminar(p) { setDelPwd(''); setDelErr(''); setDelP(p) }
+  async function confirmarEliminar() {
+    if (delPwd !== '0000') { setDelErr('Contraseña incorrecta.'); return }
+    const p = delP
+    if (p.id) {
+      if (!navigator.onLine) { setDelErr('Necesitás conexión para eliminar un pesaje ya sincronizado.'); return }
+      setDeleting(true)
+      const { error } = await supabase.from('granos_pesajes').delete().eq('id', p.id)
+      setDeleting(false)
+      if (error) { setDelErr('Error al eliminar: ' + error.message); return }
+    }
+    setAndPersist(prev => prev.filter(r => r.client_uuid !== p.client_uuid))
+    setDelP(null)
   }
 
   function guardar() {
@@ -366,6 +385,10 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
                                 Vincular CP
                               </button>
                             )}
+                            <button onClick={() => pedirEliminar(r)} title="Eliminar"
+                              style={{ background: '#FAECE7', border: '1px solid #F0997B', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#993C1D', whiteSpace: 'nowrap' }}>
+                              🗑
+                            </button>
                           </div>
                         </td>
                       )}
@@ -375,6 +398,29 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
               </tbody>
             </table>}
       </div>
+
+      {/* ── Modal eliminar ── */}
+      {delP && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => e.target === e.currentTarget && setDelP(null)}>
+          <div style={{ background:'white', borderRadius:14, padding:20, width:'min(94vw, 360px)', boxShadow:'0 12px 48px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#993C1D', marginBottom:6 }}>Eliminar pesaje {delP.ticket_numero ? `N° ${delP.ticket_numero}` : `(borrador ${delP.local_num})`}</div>
+            <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:12 }}>Esta acción no se puede deshacer. Ingresá la contraseña para confirmar.</div>
+            <input type="password" inputMode="numeric" value={delPwd} autoFocus
+              onChange={e => { setDelPwd(e.target.value); setDelErr('') }}
+              onKeyDown={e => e.key === 'Enter' && confirmarEliminar()}
+              placeholder="Contraseña" className="input" style={{ width:'100%', marginBottom:8 }} />
+            {delErr && <div style={{ fontSize:11, color:'#993C1D', marginBottom:8 }}>{delErr}</div>}
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button onClick={() => setDelP(null)} className="btn btn-secondary btn-sm">Cancelar</button>
+              <button onClick={confirmarEliminar} disabled={deleting}
+                style={{ padding:'6px 14px', background:'#993C1D', color:'white', border:'none', borderRadius:6, fontSize:13, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal vincular CP ── */}
       {linkP && (
