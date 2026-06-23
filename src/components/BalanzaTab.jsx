@@ -73,6 +73,10 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
   const [syncing, setSyncing] = useState(false)
   const [ticket, setTicket]   = useState(null)
   const [editId, setEditId]   = useState(null)          // client_uuid en edición
+  const [linkP, setLinkP]     = useState(null)          // pesaje a vincular con una CP
+  const [viajes, setViajes]   = useState([])
+  const [viajeQ, setViajeQ]   = useState('')
+  const [linking, setLinking] = useState(false)
 
   const listRef = useRef(list)
   useEffect(() => { listRef.current = list }, [list])
@@ -154,6 +158,23 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
       tara: r.tara ?? '', kilos_bruto: r.kilos_bruto ?? '', observaciones: r.observaciones || '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function abrirVincular(p) {
+    if (!navigator.onLine) { alert('Necesitás conexión para vincular la CP.'); return }
+    if (!p.id) { alert('Sincronizá el pesaje primero (todavía es borrador).'); return }
+    setViajeQ(''); setLinkP(p)
+    const { data } = await supabase.from('granos_viajes')
+      .select('id,fecha,ncp,patente,comprador,grano,titular,neto_romaneo')
+      .order('fecha', { ascending: false }).limit(100)
+    setViajes(data || [])
+  }
+  async function confirmarVinculo(v) {
+    if (!linkP) return
+    setLinking(true)
+    await supabase.from('granos_pesajes').update({ viaje_id: v.id, estado: 'con_cp', ncp: v.ncp || null }).eq('id', linkP.id)
+    setLinking(false); setLinkP(null)
+    fetchServer()
   }
 
   function guardar() {
@@ -339,6 +360,12 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
                                 Ticket
                               </button>
                             )}
+                            {!faltaBruto && r._sync !== 'pending' && r.estado !== 'con_cp' && (
+                              <button onClick={() => abrirVincular(r)}
+                                style={{ background: '#E4F0F4', border: '1px solid #7A9EAD', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#2C5A6A', whiteSpace: 'nowrap' }}>
+                                Vincular CP
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}
@@ -348,6 +375,45 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
               </tbody>
             </table>}
       </div>
+
+      {/* ── Modal vincular CP ── */}
+      {linkP && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => e.target === e.currentTarget && setLinkP(null)}>
+          <div style={{ background:'white', borderRadius:14, padding:20, width:'min(96vw, 560px)', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.25)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:'var(--tierra)' }}>Vincular CP — Pesaje N° {linkP.ticket_numero}</div>
+              <button onClick={() => setLinkP(null)} style={{ padding:'4px 10px', background:'#FAECE7', border:'1px solid #F0997B', borderRadius:6, fontSize:12, cursor:'pointer', color:'#993C1D' }}>Cerrar</button>
+            </div>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:10 }}>Elegí el viaje (CP) al que corresponde {linkP.patente ? `la patente ${linkP.patente}` : 'este pesaje'}.</div>
+            <input className="input" value={viajeQ} onChange={e => setViajeQ(e.target.value)} placeholder="Buscar por CP, patente, comprador..." style={{ width:'100%', marginBottom:10 }} />
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {(() => {
+                const norm = s => (s||'').toString().toUpperCase().replace(/\s+/g,'')
+                const q = viajeQ.trim().toLowerCase()
+                const lista = viajes
+                  .filter(v => !q || [v.ncp, v.patente, v.comprador, v.grano, v.titular].some(x => x && String(x).toLowerCase().includes(q)))
+                  .sort((a,b) => ((norm(b.patente) === norm(linkP.patente) && linkP.patente) ? 1 : 0) - ((norm(a.patente) === norm(linkP.patente) && linkP.patente) ? 1 : 0))
+                if (lista.length === 0) return <div style={{ fontSize:12, color:'var(--arcilla)', padding:'10px 0' }}>No hay viajes que coincidan. Cargá la CP en "+ Viaje".</div>
+                return lista.slice(0, 40).map(v => {
+                  const match = linkP.patente && norm(v.patente) === norm(linkP.patente)
+                  return (
+                    <button key={v.id} onClick={() => confirmarVinculo(v)} disabled={linking}
+                      style={{ textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+                        background: match ? '#EBF4E8' : '#FDFAF4', border:`1px solid ${match ? '#9DC87A' : 'var(--border)'}` }}>
+                      <span style={{ fontSize:12 }}>
+                        <strong>{v.ncp || 'CP s/n°'}</strong> · {v.patente || 's/patente'} · {v.comprador || ''} {match && <span style={{ color:'#2E4F26', fontWeight:600 }}>· coincide patente</span>}
+                        <br /><span style={{ color:'var(--text-muted)', fontSize:11 }}>{fmtFechaHora(v.fecha)} · {v.grano || ''} · {v.titular || ''}</span>
+                      </span>
+                      <span style={{ fontSize:11, color:'var(--musgo)', whiteSpace:'nowrap' }}>{v.neto_romaneo ? Math.round(v.neto_romaneo).toLocaleString('es-AR')+' kg' : ''}</span>
+                    </button>
+                  )
+                })
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal ticket ── */}
       {ticket && (() => {
