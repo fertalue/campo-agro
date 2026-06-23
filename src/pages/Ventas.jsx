@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import BalanzaTab from '../components/BalanzaTab'
 
 const CAMPANHAS   = ['25-26','24-25','23-24','22-23']
 const GRANOS      = ['Maíz','Soja','Soja semilla','Trigo','Girasol']
@@ -533,6 +534,11 @@ function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
           )}
         </div>
       )}
+
+      {/* ─────────── BALANZA ─────────── */}
+      {tab === 'balanza' && (
+        <BalanzaTab canEdit={puedeEditar_} GRANOS={GRANOS} TITULARES={TITULARES} COMPRADORES={COMPRADORES} CAMPANHAS={CAMPANHAS} />
+      )}
     </div>
   )
 }
@@ -860,8 +866,8 @@ export default function Ventas() {
       {showCosecha && <FormCosecha onSave={async()=>{setShowCosecha(false);await fetchAll()}} onCancel={()=>setShowCosecha(false)} />}
       {showForm    && <FormViaje  onSave={async()=>{setShowForm(false);  await fetchAll()}} onCancel={()=>setShowForm(false)} />}
 
-      {/* Filtros globales - ocultar en tab contratos */}
-      {tab !== 'contratos' && (
+      {/* Filtros globales - ocultar en tab contratos y balanza */}
+      {tab !== 'contratos' && tab !== 'balanza' && (
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
         <VtMultiSelect label="Campaña"  options={CAMPANHAS}  selected={fCampanha}  onChange={setFCampanha}  placeholder="Todas" />
         <VtMultiSelect label="Grano"    options={[...new Set(viajes.map(v=>v.grano).filter(Boolean))].sort()} selected={fGrano} onChange={setFGrano} placeholder="Todos" />
@@ -878,18 +884,20 @@ export default function Ventas() {
 
       {/* Tabs */}
       <div className="vt-tabs">
-        {[['resumen','Resumen'],['cosecha','Cosecha'],['distribucion','Distribución'],['viajes','Viajes'],['contratos','Contratos'],['mermas','Pesada vs Puerto']].map(([id,lbl]) => (
+        {[['resumen','Resumen'],['cosecha','Cosecha'],['distribucion','Distribución'],['viajes','Viajes'],['contratos','Contratos'],['mermas','Pesada vs Puerto'],['balanza','Balanza']].map(([id,lbl]) => (
           <button key={id} className={`vt-tab${tab===id?' on':''}`} onClick={()=>setTab(id)}>{lbl}</button>
         ))}
       </div>
 
       {/* Stats */}
+      {tab !== 'balanza' && (
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,minmax(0,1fr))', gap:10, marginBottom:16 }}>
         <StatCard label="Neto Romaneo"      value={fmtTn(totalRomaneo)} sub={`${totalViajes} viajes`} color="#4A7C3F" pct={80} />
         <StatCard label="Pesada campo"      value={fmtTn(totalNeto)}    sub="neto campo"              color="#7A9EAD" pct={85} />
         <StatCard label="Dif. campo/puerto" value={fmtKg(Math.abs(totalDif))} sub={totalDif > 0 ? 'a favor' : 'en contra'} color={totalDif >= 0 ? '#4A7C3F' : '#A0714F'} pct={40} />
         <StatCard label="Camiones"          value={totalViajes.toString()} sub={`${filtered.length} viajes`} color="#C8A96E" pct={60} />
       </div>
+      )}
 
       {/* ─────────── RESUMEN ─────────── */}
       {tab === 'resumen' && (
