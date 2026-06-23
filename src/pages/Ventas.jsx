@@ -748,15 +748,20 @@ export default function Ventas() {
 
   async function fetchAll() {
     setLoading(true)
-    const [v, ct, c] = await Promise.all([
-      supabase.from('granos_viajes').select('*').order('fecha', { ascending: false }),
-      supabase.from('contratos').select('*').order('fecha_cierre', { ascending: false }),
-      supabase.from('granos_cosecha').select('*').order('fecha', { ascending: false }),
-    ])
-    setViajes(v.data || [])
-    setContratos(ct.data || [])
-    setCosecha(c.data || [])
-    setLoading(false)
+    try {
+      const [v, ct, c] = await Promise.all([
+        supabase.from('granos_viajes').select('*').order('fecha', { ascending: false }),
+        supabase.from('contratos').select('*').order('fecha_cierre', { ascending: false }),
+        supabase.from('granos_cosecha').select('*').order('fecha', { ascending: false }),
+      ])
+      setViajes(v.data || [])
+      setContratos(ct.data || [])
+      setCosecha(c.data || [])
+    } catch (e) {
+      // Sin conexión u otro error de red: se mantiene lo que haya y la página abre igual (la tab Balanza funciona offline)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function saveViaje(id, form) {

@@ -7,6 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,json,woff,woff2}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/\.netlify\//],
+        cleanupOutdatedCaches: true,
+      },
       includeAssets: ['favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Campo',
