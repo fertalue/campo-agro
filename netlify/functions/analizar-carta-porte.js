@@ -31,7 +31,7 @@ export default async (req) => {
   "fecha": "YYYY-MM-DD (convertir de DD/MM/YYYY del documento)",
   "campanha": "campaña en formato XX-XX (ej: 2526 → 25-26)",
   "grano": "Maíz, Soja, Soja semilla, Trigo o Girasol",
-  "comprador": "nombre del Destinatario (sin CUIT)",
+  "comprador": "nombre del Remitente Comercial Venta Primaria (sin CUIT)",
   "flete_pagador": "nombre del Flete pagador (sin CUIT)",
   "patente": "dominios separados por guión (ej: ABC123-DEF456)",
   "bruto": número entero kg bruto o null,
@@ -42,7 +42,7 @@ export default async (req) => {
 
 REGLAS CRÍTICAS:
 - "titular" = campo "Titular Carta de Porte", NO el remitente ni productor
-- "comprador" = campo "Destinatario"
+- "comprador" = campo "Remitente Comercial Venta Primaria" (si el documento no usa ese rótulo exacto, tomar "Remitente Comercial"). NO usar el Destinatario ni el Destino
 - "campanha": el campo dice "2526" → escribir "25-26"; "2425" → "24-25"
 - Fechas: DD/MM/YYYY del documento → YYYY-MM-DD. El año es siempre 2024, 2025 o 2026
 - Sin CUIT, solo el nombre de la empresa o persona
