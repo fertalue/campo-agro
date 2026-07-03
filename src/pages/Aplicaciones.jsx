@@ -16,14 +16,30 @@ function fmtFecha(f) {
   return new Date(f+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'})
 }
 
-// Precio unitario vigente de un producto en almacén (último movimiento con precio)
-function getPrecioUnitario(productoNombre, marca, movimientos) {
+// Conversión de unidades para no mezclar precio (ej: USD/kg) con cantidad (ej: g).
+// Factor = cuántas unidades base equivale 1 de esta unidad (masa base=kg, volumen base=L).
+const UF = { g:0.001, kg:1, tn:1000, mg:0.000001, cc:0.001, ml:0.001, l:1, lt:1, unidad:1 }
+const normU = u => (u||'').toString().trim().toLowerCase()
+// Convierte un precio de "por fromU" a "por toU" (misma dimensión). Ej: 30 USD/kg → 0.03 USD/g
+function convertirPrecio(precio, fromU, toU) {
+  if (precio == null) return null
+  if (!fromU || !toU) return precio
+  const a = UF[normU(fromU)], b = UF[normU(toU)]
+  if (!a || !b) return precio
+  return precio * b / a
+}
+
+// Precio unitario vigente de un producto en almacén (último movimiento con precio),
+// convertido a `unidadDestino` para que coincida con la unidad de la dosis/cantidad.
+function getPrecioUnitario(productoNombre, marca, movimientos, unidadDestino) {
   const movs = movimientos
     .filter(m => m.producto === productoNombre &&
                  (m.tipo === 'compra' || m.tipo === 'stock_inicial') &&
                  m.precio_unitario)
     .sort((a,b) => new Date(b.fecha) - new Date(a.fecha))
-  return movs[0]?.precio_unitario || null
+  const m = movs[0]
+  if (!m || m.precio_unitario == null) return null
+  return convertirPrecio(parseFloat(m.precio_unitario), m.unidad, unidadDestino)
 }
 
 // Reparto de marcas de un producto: usa el campo `marcas` (modelo nuevo) o,
@@ -122,7 +138,7 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
 
   const costoProductosHa = prods.reduce((sum, p) => {
     if (!p.producto || !p.cantidad_ha) return sum
-    const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm)
+    const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm, p.unidad)
     return sum + (precio ? parseFloat(p.cantidad_ha) * precio : 0)
   }, 0)
 
@@ -253,7 +269,7 @@ function FormAplicacion({ aplic, productosAlmacen, movimientosAlm, stockActual, 
 
           {prodsSorted.map((p, sortedIdx) => {
             const origIdx = prods.indexOf(p)
-            const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm)
+            const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm, p.unidad)
             const costoProdHa = precio && p.cantidad_ha ? precio * parseFloat(p.cantidad_ha) : null
             const eiqProdHa   = p.eiq && p.cantidad_ha ? parseFloat(p.eiq) * parseFloat(p.cantidad_ha) : null
             const stockDisp   = stockDisponible(p)
@@ -394,7 +410,7 @@ function generarPDF(aplic, prods, movimientosAlm, mapImg) {
   const sup = parseFloat(aplic.superficie_ha)||0
   const costoLabor = parseFloat(aplic.costo_ha_usd)||0
   const costoProds = prods.reduce((s,p) => {
-    const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm)
+    const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm, p.unidad)
     return s + (precio && p.cantidad_ha ? precio * parseFloat(p.cantidad_ha) : 0)
   },0)
   const costoTotal = costoLabor + costoProds
@@ -443,7 +459,7 @@ ${mapImg?`<div style="text-align:center;margin-bottom:14px"><img src="${mapImg}"
 <thead><tr><th>#</th><th>Principio activo</th><th>Marca</th><th>Dosis/ha</th><th>Total</th><th>Precio/u</th><th>Costo/ha</th><th>EIQ</th></tr></thead>
 <tbody>
 ${[...prods].sort((a,b)=>(a.orden_carga||99)-(b.orden_carga||99)).map((p,i)=>{
-  const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm)
+  const precio = getPrecioUnitario(p.producto, p.marca, movimientosAlm, p.unidad)
   const cpha = precio && p.cantidad_ha ? (precio*parseFloat(p.cantidad_ha)).toFixed(2) : '—'
   const eiq  = p.eiq_unitario || p.eiq || null
   return `<tr>
@@ -892,6 +908,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
         const ppu = movsProd.length
           ? movsProd.reduce((s,m)=>s+(m.precio_unitario||0)*m.cantidad,0) / movsProd.reduce((s,m)=>s+m.cantidad,0)
           : null
+        const ppuU = ppu != null ? convertirPrecio(ppu, movsProd[0]?.unidad, p.unidad) : null
         return marcasDe(p).filter(b => b.cantidad > 0).map(b => ({
           fecha:           orden.fecha,
           tipo:            'salida_aplicacion',
@@ -900,8 +917,8 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
           marca:           b.marca || null,
           cantidad:        b.cantidad,
           unidad:          p.unidad,
-          precio_unitario: ppu || null,
-          precio_total:    ppu ? ppu*b.cantidad : null,
+          precio_unitario: ppuU || null,
+          precio_total:    ppuU != null ? ppuU*b.cantidad : null,
           aplicacion_id:   orden.id,
           quien_registro:  quien,
           observaciones:   `Aplicación: ${orden.lote||''} ${orden.fecha}`,
@@ -930,7 +947,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
   const sup        = parseFloat(a.superficie_ha)||0
   const costoLabor = parseFloat(a.costo_ha_usd)||0
   const costoProds = prods.reduce((s,p) => {
-    const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
+    const precio = getPrecioUnitario(p.producto, p.marca, movsAlm, p.unidad)
     return s + (precio && p.cantidad_ha ? precio*parseFloat(p.cantidad_ha) : 0)
   },0)
   const costoTotalHa = costoLabor + costoProds
@@ -1219,7 +1236,7 @@ function OrdenCard({ a, prods, movsAlm, productosAlm, canEdit, quien, onRefresh,
             <div style={{fontSize:11,color:'var(--text-muted)',padding:'2px 0 6px'}}>Sin productos cargados todavía.</div>
           )}
           {prods.map((p,i)=>{
-            const precio = getPrecioUnitario(p.producto, p.marca, movsAlm)
+            const precio = getPrecioUnitario(p.producto, p.marca, movsAlm, p.unidad)
             const eiq = parseFloat(p.eiq || p.eiq_unitario)||0
             const editandoProd = editando === p.id
             const dividiendo   = editando === 'dividir_'+p.id
@@ -1682,6 +1699,7 @@ export default function Aplicaciones() {
           ? movsProd.reduce((a,m) => a + (m.precio_unitario||0)*m.cantidad, 0) /
             movsProd.reduce((a,m) => a + m.cantidad, 0)
           : null
+        const ppuU = ppu != null ? convertirPrecio(ppu, movsProd[0]?.unidad, p.unidad) : null
         return marcasDe(p).filter(b => b.cantidad > 0).map(b => ({
           fecha: orden.fecha,
           tipo: 'salida_aplicacion',
@@ -1690,8 +1708,8 @@ export default function Aplicaciones() {
           marca: b.marca || null,
           cantidad: b.cantidad,
           unidad: p.unidad,
-          precio_unitario: ppu || null,
-          precio_total: ppu ? ppu * b.cantidad : null,
+          precio_unitario: ppuU || null,
+          precio_total: ppuU != null ? ppuU * b.cantidad : null,
           aplicacion_id: orden.id,
           quien_registro: quien,
           observaciones: `Aplicación: ${orden.lote} ${orden.fecha}`,
