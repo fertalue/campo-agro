@@ -23,6 +23,13 @@ function fmtTn(n) { if (!n) return '—'; return (n/1000).toLocaleString('es-AR'
 function fmtKg(n) { if (!n) return '—'; return Math.round(n).toLocaleString('es-AR') + ' kg' }
 function fmtPct(n) { if (!n && n!==0) return '—'; return parseFloat(n).toFixed(1) + '%' }
 function fmtFecha(f) { if (!f) return '—'; return new Date(f+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'}) }
+// Monto de contrato normalizado a USD: los contratos en ARS se convierten con su tipo_cambio
+function ctMontoUSD(ct) {
+  const m = parseFloat(ct.monto_total) || 0
+  if (ct.moneda !== 'ARS') return m
+  const tc = parseFloat(ct.tipo_cambio) || 0
+  return tc > 0 ? m / tc : 0
+}
 
 const CSS = `
 .vt-tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #D8C9A8;}
@@ -595,7 +602,7 @@ function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
 function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHAS, COMPRADORES_CT }) {
   const PRODUCTOS_CT = ['Soja','Maíz','Trigo','Girasol','Sorgo','Soja semilla']
   const isEdit = !!contrato
-  const emptyForm = { fecha_cierre:new Date().toISOString().split('T')[0], campanha:'25-26', producto:'Soja', numero_contrato:'', volumen:'', unidad:'tn', precio:'', moneda:'USD', fecha_entrega:'', a_nombre:'ambos', comprador:'', observaciones:'' }
+  const emptyForm = { fecha_cierre:new Date().toISOString().split('T')[0], campanha:'25-26', producto:'Soja', numero_contrato:'', volumen:'', unidad:'tn', precio:'', moneda:'USD', tipo_cambio:'', fecha_entrega:'', a_nombre:'ambos', comprador:'', observaciones:'' }
   const [form, setForm] = useState(isEdit ? {
     fecha_cierre:    contrato.fecha_cierre || new Date().toISOString().split('T')[0],
     campanha:        contrato.campanha || '25-26',
@@ -605,6 +612,7 @@ function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHA
     unidad:          contrato.unidad || 'tn',
     precio:          contrato.precio ?? '',
     moneda:          contrato.moneda || 'USD',
+    tipo_cambio:     contrato.tipo_cambio ?? '',
     fecha_entrega:   contrato.fecha_entrega || '',
     a_nombre:        contrato.a_nombre || 'ambos',
     comprador:       contrato.comprador || '',
@@ -613,11 +621,30 @@ function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHA
   const f = (k,v) => setForm(p => ({...p,[k]:v}))
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [tcMsg, setTcMsg] = useState('')
+  const esARS = form.moneda === 'ARS'
   const montoCalc = (parseFloat(form.volumen)||0) * (parseFloat(form.precio)||0)
+  const tcNum = parseFloat(form.tipo_cambio) || 0
+  const montoUSDCalc = esARS ? (tcNum > 0 ? montoCalc / tcNum : 0) : montoCalc
+
+  // Autocompletar tipo de cambio: cotización oficial más cercana anterior a la fecha de cierre
+  useEffect(() => {
+    if (!esARS || !form.fecha_cierre) { setTcMsg(''); return }
+    supabase.from('cotizaciones_usd').select('fecha,venta').eq('tipo','oficial')
+      .lte('fecha', form.fecha_cierre).order('fecha', { ascending:false }).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (data?.venta) {
+          setForm(p => p.tipo_cambio ? p : { ...p, tipo_cambio: data.venta })
+          setTcMsg(`Oficial ${fmtFecha(data.fecha)}: $${parseFloat(data.venta).toLocaleString('es-AR')}`)
+        } else setTcMsg('Sin cotización guardada para esa fecha — ingresala manualmente')
+      })
+  }, [esARS, form.fecha_cierre])
 
   async function handleSave(e) {
-    e.preventDefault(); setSaving(true)
-    const payload = { ...form, volumen:parseFloat(form.volumen)||null, precio:parseFloat(form.precio)||null, monto_total:montoCalc||null }
+    e.preventDefault()
+    if (form.moneda === 'ARS' && !(parseFloat(form.tipo_cambio) > 0)) { alert('Falta el tipo de cambio del contrato en pesos.'); return }
+    setSaving(true)
+    const payload = { ...form, volumen:parseFloat(form.volumen)||null, precio:parseFloat(form.precio)||null, monto_total:montoCalc||null, tipo_cambio: form.moneda==='ARS' ? (parseFloat(form.tipo_cambio)||null) : null }
     if (isEdit) {
       await supabase.from('contratos').update(payload).eq('id', contrato.id)
     } else {
@@ -701,10 +728,19 @@ function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHA
             </div>
           </div>
         </div>
+        {esARS && (
+          <div className="field"><label className="label">Tipo de cambio (ARS/USD)</label>
+            <input className="input" type="number" step="0.01" value={form.tipo_cambio} onChange={e=>f('tipo_cambio',e.target.value)} placeholder="1400" style={{width:'100%'}}/>
+            {tcMsg && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>{tcMsg}</div>}
+          </div>
+        )}
         {montoCalc > 0 && (
           <div style={{ background:'var(--verde-light)', border:'1px solid var(--brote)', borderRadius:8, padding:'10px 14px', display:'flex', justifyContent:'space-between' }}>
             <span style={{ fontSize:12, color:'var(--musgo)' }}>Monto total</span>
-            <span style={{ fontSize:18, fontWeight:600, color:'var(--musgo)' }}>{form.moneda==='USD'?'U$S ':'$ '}{montoCalc.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</span>
+            <span style={{ textAlign:'right' }}>
+              <span style={{ fontSize:18, fontWeight:600, color:'var(--musgo)' }}>{form.moneda==='USD'?'U$S ':'$ '}{montoCalc.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</span>
+              {esARS && tcNum > 0 && <div style={{ fontSize:11, color:'var(--text-muted)' }}>≈ U$S {Math.round(montoUSDCalc).toLocaleString('es-AR')} · U$S {((parseFloat(form.precio)||0)/tcNum).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}/{form.unidad}</div>}
+            </span>
           </div>
         )}
         <div className="grid-2">
@@ -1289,14 +1325,14 @@ export default function Ventas() {
           return true
         })
         const totalCtVol    = ctFiltrados.reduce((a,b) => a+(b.volumen||0), 0)
-        const totalCtMonto  = ctFiltrados.reduce((a,b) => a+(b.monto_total||0), 0)
+        const totalCtMonto  = ctFiltrados.reduce((a,b) => a+ctMontoUSD(b), 0)
         const precioMedioCt = totalCtVol > 0 ? totalCtMonto/totalCtVol : 0
 
         const porGranoCt = {}
         ctFiltrados.forEach(ct => {
           if (!porGranoCt[ct.producto]) porGranoCt[ct.producto] = { contractuado:0, monto:0, n:0, entregado:0 }
           porGranoCt[ct.producto].contractuado += ct.volumen||0
-          porGranoCt[ct.producto].monto        += ct.monto_total||0
+          porGranoCt[ct.producto].monto        += ctMontoUSD(ct)
           porGranoCt[ct.producto].n            += 1
         })
         viajes.filter(v => fCtCampanha==='Todas' || v.campanha===fCtCampanha).forEach(v => {
@@ -1383,8 +1419,14 @@ export default function Ventas() {
                           </td>
                           <td style={{color:'var(--suelo)'}}>{ct.comprador}</td>
                           <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:500}}>{ct.volumen?.toLocaleString('es-AR')} {ct.unidad}</td>
-                          <td style={{textAlign:'right',fontFamily:'monospace'}}>{ct.moneda==='USD'?'U$S ':'$ '}{ct.precio?.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}/{ct.unidad}</td>
-                          <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:500,color:'var(--musgo)'}}>{ct.moneda==='USD'?'U$S ':'$ '}{Math.round(ct.monto_total||0).toLocaleString('es-AR')}</td>
+                          <td style={{textAlign:'right',fontFamily:'monospace'}}>
+                            {ct.moneda==='USD'?'U$S ':'$ '}{ct.precio?.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}/{ct.unidad}
+                            {ct.moneda==='ARS' && parseFloat(ct.tipo_cambio)>0 && <div style={{fontSize:10,color:'var(--text-muted)'}}>≈ U$S {((parseFloat(ct.precio)||0)/parseFloat(ct.tipo_cambio)).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}/{ct.unidad}</div>}
+                          </td>
+                          <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:500,color:'var(--musgo)'}}>
+                            {ct.moneda==='USD'?'U$S ':'$ '}{Math.round(ct.monto_total||0).toLocaleString('es-AR')}
+                            {ct.moneda==='ARS' && parseFloat(ct.tipo_cambio)>0 && <div style={{fontSize:10,color:'var(--text-muted)'}}>≈ U$S {Math.round(ctMontoUSD(ct)).toLocaleString('es-AR')}</div>}
+                          </td>
                           <td style={{color:'var(--text-muted)',whiteSpace:'nowrap'}}>{ct.fecha_entrega?new Date(ct.fecha_entrega+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'}):'—'}</td>
                           <td><span className={`cc ${ct.a_nombre==='Fer'?'chip-green':ct.a_nombre==='Leo'?'chip-amber':'chip-sky'}`}>{ct.a_nombre}</span></td>
                           <td style={{fontSize:11,color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ct.observaciones}>{ct.observaciones||'—'}</td>
