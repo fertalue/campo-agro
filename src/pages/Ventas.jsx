@@ -3,7 +3,11 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import BalanzaTab from '../components/BalanzaTab'
 
-const CAMPANHAS   = ['25-26','24-25','23-24','22-23']
+const CAMPANHAS   = ['26-27','25-26','24-25','23-24','22-23']
+// Sincronizar con datos maestros (tipo 'campanha'); mutación in-place para que
+// todos los componentes que referencian CAMPANHAS vean la lista actualizada
+supabase.from('maestros').select('valor').eq('tipo','campanha').eq('activo',true).order('orden')
+  .then(({ data }) => { if (data?.length) CAMPANHAS.splice(0, CAMPANHAS.length, ...data.map(d => d.valor)) })
 const GRANOS      = ['Maíz','Soja','Soja semilla','Trigo','Girasol']
 const TIPOS       = ['Venta','Alquiler','Prestamo']
 const TITULARES   = ['Fer','Leo','Giaguaro','Ketopy S.A','Dari','Dario']
