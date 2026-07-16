@@ -48,6 +48,7 @@ export default function Documentos() {
   const [editDoc, setEditDoc]       = useState(null)   // { id, nombre, categoria, descripcion }
   const [savingEdit, setSavingEdit] = useState(false)
   const [categorias, setCategorias] = useState(CATEGORIAS_DEFAULT)
+  const [preview, setPreview]       = useState(null)   // { doc, url, tipo }
   const fileRef                     = useRef()
 
   // Form upload
@@ -96,6 +97,24 @@ export default function Documentos() {
   async function handleDownload(doc) {
     const { data } = await supabase.storage.from('documentos').createSignedUrl(doc.bucket_path, 60)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
+  function tipoPreview(doc) {
+    const t = doc.tipo_archivo || ''
+    if (t.startsWith('image/')) return 'imagen'
+    if (t === 'application/pdf') return 'pdf'
+    if (t.startsWith('video/')) return 'video'
+    if (t.startsWith('audio/')) return 'audio'
+    if (t.startsWith('text/')) return 'texto'
+    return null
+  }
+
+  async function handlePreview(doc) {
+    const tipo = tipoPreview(doc)
+    if (!tipo) { handleDownload(doc); return }
+    const { data, error } = await supabase.storage.from('documentos').createSignedUrl(doc.bucket_path, 600)
+    if (error || !data?.signedUrl) { alert('No se pudo generar la vista previa.'); return }
+    setPreview({ doc, url: data.signedUrl, tipo })
   }
 
   async function handleDelete(doc) {
@@ -295,9 +314,13 @@ export default function Documentos() {
                       </>
                     ) : (
                       <>
-                    <button onClick={()=>handleDownload(d)}
+                    <button onClick={()=>handlePreview(d)}
                       style={{padding:'5px 10px',background:'#4A7C3F',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
-                      ↓ Abrir
+                      {tipoPreview(d) ? '👁 Ver' : '↓ Abrir'}
+                    </button>
+                    <button onClick={()=>handleDownload(d)} title="Descargar / abrir en pestaña nueva"
+                      style={{padding:'5px 8px',background:'#F5F0E4',border:'1px solid #D8C9A8',borderRadius:6,fontSize:11,cursor:'pointer',color:'var(--tierra)'}}>
+                      ↓
                     </button>
                     {canEdit && (
                       <button onClick={()=>setEditDoc({ id:d.id, nombre:d.nombre||'', categoria:d.categoria||'General', descripcion:d.descripcion||'' })} title="Editar nombre / categoría"
@@ -320,6 +343,48 @@ export default function Documentos() {
           )}
         </div>
       </div>
+
+      {/* Modal de vista previa */}
+      {preview && (
+        <div onClick={()=>setPreview(null)}
+          style={{position:'fixed',inset:0,background:'rgba(30,25,15,0.75)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:'#FDFAF4',borderRadius:12,width:'min(960px,96vw)',maxHeight:'92vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 12px 40px rgba(0,0,0,0.35)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:'1px solid #D8C9A8'}}>
+              <span style={{fontSize:18}}>{getIcono(preview.doc.tipo_archivo)}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13,color:'var(--tierra)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{preview.doc.nombre}</div>
+                <div style={{fontSize:10,color:'var(--text-muted)'}}>{preview.doc.categoria} · {fmtBytes(preview.doc.tamano_bytes)}</div>
+              </div>
+              <button onClick={()=>handleDownload(preview.doc)}
+                style={{padding:'5px 10px',background:'#F5F0E4',border:'1px solid #D8C9A8',borderRadius:6,fontSize:11,cursor:'pointer',color:'var(--tierra)',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+                ↓ Descargar
+              </button>
+              <button onClick={()=>setPreview(null)}
+                style={{padding:'5px 10px',background:'transparent',border:'1px solid #D8C9A8',borderRadius:6,fontSize:13,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
+                ✕
+              </button>
+            </div>
+            <div style={{flex:1,minHeight:0,background:'#EFECE4',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              {preview.tipo === 'imagen' && (
+                <img src={preview.url} alt={preview.doc.nombre} style={{maxWidth:'100%',maxHeight:'80vh',objectFit:'contain'}}/>
+              )}
+              {preview.tipo === 'pdf' && (
+                <iframe src={preview.url} title={preview.doc.nombre} style={{width:'100%',height:'80vh',border:'none',background:'white'}}/>
+              )}
+              {preview.tipo === 'video' && (
+                <video src={preview.url} controls style={{maxWidth:'100%',maxHeight:'80vh'}}/>
+              )}
+              {preview.tipo === 'audio' && (
+                <audio src={preview.url} controls style={{width:'80%',margin:'40px 0'}}/>
+              )}
+              {preview.tipo === 'texto' && (
+                <iframe src={preview.url} title={preview.doc.nombre} style={{width:'100%',height:'80vh',border:'none',background:'white'}}/>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
