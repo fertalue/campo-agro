@@ -45,6 +45,8 @@ export default function Documentos() {
   const [busqueda, setBusqueda]     = useState('')
   const [showForm, setShowForm]     = useState(false)
   const [dragOver, setDragOver]     = useState(false)
+  const [editDoc, setEditDoc]       = useState(null)   // { id, nombre, categoria, descripcion }
+  const [savingEdit, setSavingEdit] = useState(false)
   const fileRef                     = useRef()
 
   // Form upload
@@ -92,6 +94,18 @@ export default function Documentos() {
     if (!confirm(`¿Eliminar "${doc.nombre}"?`)) return
     await supabase.storage.from('documentos').remove([doc.bucket_path])
     await supabase.from('documentos').delete().eq('id', doc.id)
+    await fetchDocs()
+  }
+
+  async function handleSaveEdit() {
+    if (!editDoc?.nombre?.trim()) { alert('El nombre no puede quedar vacío.'); return }
+    setSavingEdit(true)
+    const { error } = await supabase.from('documentos')
+      .update({ nombre: editDoc.nombre.trim(), categoria: editDoc.categoria, descripcion: editDoc.descripcion?.trim() || null })
+      .eq('id', editDoc.id)
+    setSavingEdit(false)
+    if (error) { alert('Error al guardar: ' + error.message); return }
+    setEditDoc(null)
     await fetchDocs()
   }
 
@@ -225,8 +239,26 @@ export default function Documentos() {
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {docsFiltrados.map(d=>(
                 <div key={d.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',
-                  background:'#FDFAF4',border:'1px solid #D8C9A8',borderRadius:10,transition:'box-shadow .1s'}}>
+                  background: editDoc?.id===d.id ? '#FFF9EE' : '#FDFAF4',border:`1px solid ${editDoc?.id===d.id?'#C8A96E':'#D8C9A8'}`,borderRadius:10,transition:'box-shadow .1s'}}>
                   <div style={{fontSize:22,flexShrink:0}}>{getIcono(d.tipo_archivo)}</div>
+                  {editDoc?.id === d.id ? (
+                    <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:6}}>
+                      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        <input autoFocus value={editDoc.nombre} onChange={e=>setEditDoc(p=>({...p,nombre:e.target.value}))}
+                          onKeyDown={e=>{ if(e.key==='Enter') handleSaveEdit(); if(e.key==='Escape') setEditDoc(null) }}
+                          placeholder="Nombre del documento"
+                          style={{flex:'2 1 200px',padding:'6px 10px',border:'1px solid #C8A96E',borderRadius:7,fontSize:13,fontFamily:'inherit',background:'white',fontWeight:600}}/>
+                        <select value={editDoc.categoria} onChange={e=>setEditDoc(p=>({...p,categoria:e.target.value}))}
+                          style={{flex:'1 1 140px',padding:'6px 10px',border:'1px solid #C8A96E',borderRadius:7,fontSize:12,fontFamily:'inherit',background:'white'}}>
+                          {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <input value={editDoc.descripcion} onChange={e=>setEditDoc(p=>({...p,descripcion:e.target.value}))}
+                        onKeyDown={e=>{ if(e.key==='Enter') handleSaveEdit(); if(e.key==='Escape') setEditDoc(null) }}
+                        placeholder="Descripción (opcional)"
+                        style={{padding:'5px 10px',border:'1px solid #D8C9A8',borderRadius:7,fontSize:12,fontFamily:'inherit',background:'white'}}/>
+                    </div>
+                  ) : (
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,color:'var(--tierra)',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.nombre}</div>
                     <div style={{display:'flex',gap:8,marginTop:2,flexWrap:'wrap'}}>
@@ -237,16 +269,38 @@ export default function Documentos() {
                       {d.quien_subio && <span style={{fontSize:10,color:'var(--text-muted)'}}>↑ {d.quien_subio}</span>}
                     </div>
                   </div>
+                  )}
                   <div style={{display:'flex',gap:5,flexShrink:0}}>
+                    {editDoc?.id === d.id ? (
+                      <>
+                        <button onClick={handleSaveEdit} disabled={savingEdit}
+                          style={{padding:'5px 10px',background:'#4A7C3F',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                          {savingEdit ? '...' : '✓ Guardar'}
+                        </button>
+                        <button onClick={()=>setEditDoc(null)}
+                          style={{padding:'5px 10px',background:'transparent',border:'1px solid #D8C9A8',borderRadius:6,fontSize:11,cursor:'pointer',color:'var(--arcilla)',fontFamily:'inherit'}}>
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
                     <button onClick={()=>handleDownload(d)}
                       style={{padding:'5px 10px',background:'#4A7C3F',color:'white',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
                       ↓ Abrir
                     </button>
                     {canEdit && (
+                      <button onClick={()=>setEditDoc({ id:d.id, nombre:d.nombre||'', categoria:d.categoria||'General', descripcion:d.descripcion||'' })} title="Editar nombre / categoría"
+                        style={{padding:'5px 8px',background:'#F5F0E4',border:'1px solid #D8C9A8',borderRadius:6,fontSize:11,cursor:'pointer',color:'var(--tierra)'}}>
+                        ✎
+                      </button>
+                    )}
+                    {canEdit && (
                       <button onClick={()=>handleDelete(d)}
                         style={{padding:'5px 8px',background:'#FAECE7',border:'1px solid #F0997B',borderRadius:6,fontSize:11,cursor:'pointer',color:'#993C1D'}}>
                         🗑
                       </button>
+                    )}
+                      </>
                     )}
                   </div>
                 </div>
