@@ -16,6 +16,7 @@ const TIPOS = [
   { id: 'mes_canje',         label: 'Meses de canje' },
   { id: 'campanha',           label: 'Campañas' },
   { id: 'categoria_trabajo', label: 'Categorías de trabajo' },
+  { id: 'categoria_documento', label: 'Categorías de documentos' },
 
 ]
 

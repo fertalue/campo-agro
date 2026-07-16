@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
-const CATEGORIAS = ['General','Contratos','Facturas','Seguros','Mapas y lotes','Análisis de suelo','Fitosanitarios','Maquinaria','Recursos humanos','Otro']
+const CATEGORIAS_DEFAULT = ['General','Contratos','Facturas','Seguros','Mapas y lotes','Análisis de suelo','Fitosanitarios','Maquinaria','Recursos humanos','Otro']
 
 const ICONOS = {
   'application/pdf': '📄',
@@ -47,6 +47,7 @@ export default function Documentos() {
   const [dragOver, setDragOver]     = useState(false)
   const [editDoc, setEditDoc]       = useState(null)   // { id, nombre, categoria, descripcion }
   const [savingEdit, setSavingEdit] = useState(false)
+  const [categorias, setCategorias] = useState(CATEGORIAS_DEFAULT)
   const fileRef                     = useRef()
 
   // Form upload
@@ -55,7 +56,14 @@ export default function Documentos() {
   const [fCatForm, setFCatForm]   = useState('General')
   const [fFile, setFFile]         = useState(null)
 
-  useEffect(() => { fetchDocs() }, [])
+  useEffect(() => { fetchDocs(); fetchCategorias() }, [])
+
+  async function fetchCategorias() {
+    // Categorías desde datos maestros (tipo 'categoria_documento'); fallback a la lista local
+    const { data } = await supabase.from('maestros').select('valor')
+      .eq('tipo','categoria_documento').eq('activo',true).order('orden').order('valor')
+    if (data?.length) setCategorias(data.map(d => d.valor))
+  }
 
   async function fetchDocs() {
     setLoading(true)
@@ -115,6 +123,9 @@ export default function Documentos() {
     if (file) { setFFile(file); setFNombre(f => f || file.name); setShowForm(true) }
   }
 
+  // Barra lateral: categorías de maestros + las que existan en docs (huérfanas de renombres/bajas)
+  const catsVisibles = [...new Set([...categorias, ...docs.map(d => d.categoria).filter(Boolean)])]
+
   const docsFiltrados = docs.filter(d => {
     if (fCat !== 'todas' && d.categoria !== fCat) return false
     if (busqueda && !d.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
@@ -122,7 +133,7 @@ export default function Documentos() {
     return true
   })
 
-  const conteoPorCat = CATEGORIAS.reduce((acc,c) => {
+  const conteoPorCat = catsVisibles.reduce((acc,c) => {
     acc[c] = docs.filter(d => d.categoria === c).length
     return acc
   }, {})
@@ -173,7 +184,7 @@ export default function Documentos() {
               <div className="field"><label className="label">Categoría</label>
                 <select style={{padding:'7px 10px',border:'1px solid #D8C9A8',borderRadius:7,fontSize:13,fontFamily:'inherit',width:'100%',background:'#FDFAF4'}}
                   value={fCatForm} onChange={e=>setFCatForm(e.target.value)}>
-                  {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+                  {categorias.map(c=><option key={c}>{c}</option>)}
                 </select>
               </div>
             </div>
@@ -196,7 +207,7 @@ export default function Documentos() {
         {/* Sidebar categorías */}
         <div className="card" style={{padding:'10px 0'}}>
           <div style={{padding:'6px 14px',fontSize:10,fontWeight:600,color:'#A08060',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:4}}>Categorías</div>
-          {[['todas','Todos',docs.length],...CATEGORIAS.map(c=>[c,c,conteoPorCat[c]||0])].map(([val,lbl,n])=>(
+          {[['todas','Todos',docs.length],...catsVisibles.map(c=>[c,c,conteoPorCat[c]||0])].map(([val,lbl,n])=>(
             n > 0 || val === 'todas' ? (
               <button key={val} onClick={()=>setFCat(val)}
                 style={{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',padding:'6px 14px',
@@ -250,7 +261,7 @@ export default function Documentos() {
                           style={{flex:'2 1 200px',padding:'6px 10px',border:'1px solid #C8A96E',borderRadius:7,fontSize:13,fontFamily:'inherit',background:'white',fontWeight:600}}/>
                         <select value={editDoc.categoria} onChange={e=>setEditDoc(p=>({...p,categoria:e.target.value}))}
                           style={{flex:'1 1 140px',padding:'6px 10px',border:'1px solid #C8A96E',borderRadius:7,fontSize:12,fontFamily:'inherit',background:'white'}}>
-                          {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+                          {[...new Set([editDoc.categoria, ...categorias])].filter(Boolean).map(c=><option key={c}>{c}</option>)}
                         </select>
                       </div>
                       <input value={editDoc.descripcion} onChange={e=>setEditDoc(p=>({...p,descripcion:e.target.value}))}
