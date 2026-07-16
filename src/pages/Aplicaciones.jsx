@@ -2,14 +2,17 @@
 import { supabase } from '../lib/supabase'
 import MapaLote from '../components/MapaLote'
 import { useAuth } from '../hooks/useAuth'
+import { cargarMaestro } from '../lib/maestros'
 
 const CULTIVOS    = ['Soja','Maíz','Trigo','Girasol','Sorgo']
+cargarMaestro('grano', CULTIVOS)
 const TIPOS_APLIC = [
   { id:'barbecho',   label:'Barbecho' },
   { id:'presiembra', label:'Presiembra' },
   { id:'cultivo',    label:'Cultivo' },
 ]
 const UNIDADES = ['L','cc','kg','g','unidad']
+cargarMaestro('unidad_fisica', UNIDADES)
 
 function fmtFecha(f) {
   if (!f) return '—'

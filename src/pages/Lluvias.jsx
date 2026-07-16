@@ -1,11 +1,14 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { cargarMaestro } from '../lib/maestros'
 
 const MESES      = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const CAMPOS     = ['ambos','casco','tres esquinas']
 const FUENTES    = ['pluviómetro','Eli','Braida','Otro']
+cargarMaestro('fuente_lluvia', FUENTES)
 const CAMPANHAS_LL = ['25-26','24-25','23-24','22-23']
+cargarMaestro('campanha', CAMPANHAS_LL)
 const TABS       = [['grafico','Gráfico'],['campanhas','Campañas'],['historico','Histórico'],['registros','Registros']]
 
 function fechaEnCampanha(fecha, campanha) {

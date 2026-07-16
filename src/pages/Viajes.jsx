@@ -1,8 +1,10 @@
 ﻿import { useState, useEffect } from 'react'
 import { db, supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { cargarMaestro } from '../lib/maestros'
 
 const CATEGORIAS = ['Producción', 'Mantenimiento casco', 'Esparcimiento', 'Otro']
+cargarMaestro('categoria_viaje', CATEGORIAS)
 
 const chipClass = (cat) => ({
   'Producción': 'chip-green',

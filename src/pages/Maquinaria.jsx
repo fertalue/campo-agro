@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { cargarMaestro } from '../lib/maestros'
 
 const TIPOS_MAQ = ['Tractor','Pulverizadora','Cosechadora','Sembradora','Mixer','Acoplado','Camioneta','Otro']
+cargarMaestro('tipo_maquina', TIPOS_MAQ)
 const TIPOS_MANT = ['Aceite y filtros','Filtros','Frenos','Neumáticos','Revisión general','Reparación','Calibración','Otro']
+cargarMaestro('tipo_mantenimiento', TIPOS_MANT)
 const TIPO_ICON = { 'Tractor':'🚜','Pulverizadora':'💧','Cosechadora':'🌾','Sembradora':'🌱','Mixer':'⚙️','Acoplado':'🚛','Camioneta':'🚗','Otro':'🔧' }
 const MANT_COLOR = { 'Aceite y filtros':'#C8A96E','Filtros':'#A08060','Frenos':'#993C1D','Neumáticos':'#4A7C3F','Revisión general':'#2C5A6A','Reparación':'#7A4030','Calibración':'#6B3E22','Otro':'#888' }
 // Tipos que usan km en lugar de horas

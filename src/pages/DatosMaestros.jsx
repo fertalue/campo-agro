@@ -17,6 +17,14 @@ const TIPOS = [
   { id: 'campanha',           label: 'Campañas' },
   { id: 'categoria_trabajo', label: 'Categorías de trabajo' },
   { id: 'categoria_documento', label: 'Categorías de documentos' },
+  { id: 'comprador',          label: 'Compradores (granos)' },
+  { id: 'titular',            label: 'Titulares (granos)' },
+  { id: 'grano',              label: 'Granos / Cultivos' },
+  { id: 'unidad_fisica',      label: 'Unidades físicas (almacén)' },
+  { id: 'tipo_maquina',       label: 'Tipos de máquina' },
+  { id: 'tipo_mantenimiento', label: 'Tipos de mantenimiento' },
+  { id: 'categoria_viaje',    label: 'Categorías de viajes' },
+  { id: 'fuente_lluvia',      label: 'Fuentes de lluvia' },
 
 ]
 

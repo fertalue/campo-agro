@@ -1,9 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { cargarMaestro } from '../lib/maestros'
 
-const CENTROS = ['Producción','Costos únicos','Comercializacion','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
-const CAMPANHAS = ['25-26','24-25','23-24']
+const CENTROS = ['Producción','Costos únicos','Comercialización','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
+cargarMaestro('centro_costos', CENTROS)
+const CAMPANHAS = ['26-27','25-26','24-25','23-24']
+cargarMaestro('campanha', CAMPANHAS)
 const PRIORIDADES = ['alta','media','baja']
 const ESTADOS = ['pendiente','en_progreso','hecho']
 

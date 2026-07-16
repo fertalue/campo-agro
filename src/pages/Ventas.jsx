@@ -2,20 +2,23 @@
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import BalanzaTab from '../components/BalanzaTab'
+import { cargarMaestro, asegurarMaestro } from '../lib/maestros'
 
+// Listas sincronizadas con datos maestros (mutación in-place: los componentes
+// ven la lista actualizada al siguiente render; offline queda el fallback local)
 const CAMPANHAS   = ['26-27','25-26','24-25','23-24','22-23']
-// Sincronizar con datos maestros (tipo 'campanha'); mutación in-place para que
-// todos los componentes que referencian CAMPANHAS vean la lista actualizada
-supabase.from('maestros').select('valor').eq('tipo','campanha').eq('activo',true).order('orden')
-  .then(({ data }) => { if (data?.length) CAMPANHAS.splice(0, CAMPANHAS.length, ...data.map(d => d.valor)) })
+cargarMaestro('campanha', CAMPANHAS)
 const GRANOS      = ['Maíz','Soja','Soja semilla','Trigo','Girasol']
+cargarMaestro('grano', GRANOS)
 const TIPOS       = ['Venta','Alquiler','Prestamo']
 const TITULARES   = ['Fer','Leo','Giaguaro','Ketopy S.A','Dari','Dario']
+cargarMaestro('titular', TITULARES)
 const COMPRADORES = ['FYO Acopio S.A.','Tecnocampo','Oro verde','conci srl','Monsanto','MAS AGRO','DARIO ROSSI','6 hermanos','Eslava Gustavo']
+cargarMaestro('comprador', COMPRADORES)
 
 const ALQUILER_PCT = 0.27
 const PROD_COLORS   = { 'Soja':'#4A7C3F','Maíz':'#C8A96E','Trigo':'#A0714F','Girasol':'#EF9F27','Sorgo':'#7A9EAD','Soja semilla':'#6A9E58' }
-const COMPRADORES_CT = ['FYO Acopio S.A.','Bunge','Cargill','Nidera','Tecnocampo','Gyssa','Otro']
+const COMPRADORES_CT = COMPRADORES  // unificado: mismo maestro 'comprador'
 const GRANO_COLOR = { 'Maíz':'#C8A96E', 'Soja':'#4A7C3F', 'Soja semilla':'#9DC87A', 'Trigo':'#A0714F', 'Girasol':'#EF9F27' }
 const TIPO_CHIP   = { 'Venta':'chip-green', 'Alquiler':'chip-amber', 'Prestamo':'chip-sky', 'Cosecha':'chip-muted' }
 
@@ -277,6 +280,8 @@ function FormViaje({ onSave, onCancel }) {
 
   async function submit(e) {
     e.preventDefault(); setSaving(true)
+    asegurarMaestro('comprador', form.comprador, COMPRADORES)
+    asegurarMaestro('titular', form.titular, TITULARES)
     const { data: nuevoViaje } = await supabase.from('granos_viajes').insert({
       ...form,
       bruto: parseFloat(form.bruto)||null, tara: parseFloat(form.tara)||null,
@@ -600,7 +605,7 @@ function VtMultiSelect({ label, options, selected, onChange, placeholder }) {
 
 // ── FormContrato — componente separado para evitar hooks en IIFE ─────────────
 function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHAS, COMPRADORES_CT }) {
-  const PRODUCTOS_CT = ['Soja','Maíz','Trigo','Girasol','Sorgo','Soja semilla']
+  const PRODUCTOS_CT = GRANOS
   const isEdit = !!contrato
   const emptyForm = { fecha_cierre:new Date().toISOString().split('T')[0], campanha:'25-26', producto:'Soja', numero_contrato:'', volumen:'', unidad:'tn', precio:'', moneda:'USD', tipo_cambio:'', fecha_entrega:'', a_nombre:'ambos', comprador:'', observaciones:'' }
   const [form, setForm] = useState(isEdit ? {
@@ -644,6 +649,7 @@ function FormContrato({ contrato, onSave, onCancel, fetchAll, supabase, CAMPANHA
     e.preventDefault()
     if (form.moneda === 'ARS' && !(parseFloat(form.tipo_cambio) > 0)) { alert('Falta el tipo de cambio del contrato en pesos.'); return }
     setSaving(true)
+    asegurarMaestro('comprador', form.comprador, COMPRADORES)
     const payload = { ...form, volumen:parseFloat(form.volumen)||null, precio:parseFloat(form.precio)||null, monto_total:montoCalc||null, tipo_cambio: form.moneda==='ARS' ? (parseFloat(form.tipo_cambio)||null) : null }
     if (isEdit) {
       await supabase.from('contratos').update(payload).eq('id', contrato.id)
@@ -805,6 +811,8 @@ export default function Ventas() {
   }
 
   async function saveViaje(id, form) {
+    asegurarMaestro('comprador', form.comprador, COMPRADORES)
+    asegurarMaestro('titular', form.titular, TITULARES)
     const netoCalc = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
     const difCalc  = (parseFloat(form.kg_descargados)||0) - netoCalc
     const clean    = v => (v === '' || v === undefined) ? null : v
@@ -1315,7 +1323,7 @@ export default function Ventas() {
 
       {/* ─────────── CONTRATOS ─────────── */}
       {tab === 'contratos' && (() => {
-        const PRODUCTOS_CT = ['Soja','Maíz','Trigo','Girasol','Sorgo','Soja semilla']
+        const PRODUCTOS_CT = GRANOS
         const emptyCtForm = { fecha_cierre:new Date().toISOString().split('T')[0], campanha:'25-26', producto:'Soja', numero_contrato:'', volumen:'', unidad:'tn', precio:'', moneda:'USD', fecha_entrega:'', a_nombre:'ambos', comprador:'', observaciones:'' }
 
         const ctFiltrados = contratos.filter(ct => {

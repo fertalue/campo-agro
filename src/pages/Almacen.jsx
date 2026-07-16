@@ -1,8 +1,10 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { cargarMaestro } from '../lib/maestros'
 
 const UNIDADES = ['L','cc','kg','g','unidad']
+cargarMaestro('unidad_fisica', UNIDADES)
 const TIPO_MOV = { stock_inicial:'Stock inicial', compra:'Compra', salida_aplicacion:'Salida aplicación', ajuste:'Ajuste' }
 const COL_MOV  = { stock_inicial:'#7A9EAD', compra:'#4A7C3F', salida_aplicacion:'#C8A96E', ajuste:'#A08060' }
 
