@@ -817,6 +817,10 @@ export default function Ventas() {
     const difCalc  = (parseFloat(form.kg_descargados)||0) - netoCalc
     const clean    = v => (v === '' || v === undefined) ? null : v
     const num      = v => { const n = parseFloat(v); return isNaN(n) ? null : n }
+    // Neto Romaneo: si no se cargó a mano, se calcula con lo que haya (mermas ausentes = 0)
+    const kgDesc   = num(form.kg_descargados)
+    const mermaTot = (num(form.merma_vol)||0) + (num(form.merma_h)||0) + (num(form.merma_s)||0)
+    const netoRomaneoFinal = num(form.neto_romaneo) ?? (kgDesc != null ? kgDesc - mermaTot : null)
     await supabase.from('granos_viajes').update({
       fecha:             clean(form.fecha),
       campanha:          clean(form.campanha),
@@ -837,7 +841,7 @@ export default function Ventas() {
       merma_vol:         num(form.merma_vol),
       merma_h:           num(form.merma_h),
       merma_s:           num(form.merma_s),
-      neto_romaneo:      num(form.neto_romaneo),
+      neto_romaneo:      netoRomaneoFinal,
       h_pct:             num(form.h_pct),
       contrato_aplicado: clean(form.contrato_aplicado),
     }).eq('id', id)
