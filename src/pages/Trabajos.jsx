@@ -71,10 +71,21 @@ const TIPO_COLOR = {
 const VERDE = { bg:'#EBF4E8', border:'#9DC87A', text:'#2E4F26' }
 const AUSENTE = { bg:'#EDE7F6', border:'#B39DDB', text:'#5B3E96' } // día marcado explícitamente como no trabajado
 
-function Leyenda({ bg, border, label }) {
+// ── Texturas: rayas = medio día trabajado · puntos = no trabajado · sólido = día completo
+const rayas = (color) => `repeating-linear-gradient(45deg, ${color}55 0px, ${color}55 3px, transparent 3px, transparent 7px)`
+const puntos = (color) => `radial-gradient(${color}70 1.3px, transparent 1.4px)`
+
+function estiloTextura(estado, color) {
+  if (estado === 'medioDia') return { backgroundImage: rayas(color) }
+  if (estado === 'noTrabajado') return { backgroundImage: puntos(color), backgroundSize:'7px 7px' }
+  return { backgroundImage: 'none' }
+}
+
+function Leyenda({ bg, border, label, textura }) {
+  const patron = textura==='rayas' ? rayas(border) : textura==='puntos' ? puntos(border) : 'none'
   return (
     <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:9,color:'var(--text-muted)'}}>
-      <span style={{width:8,height:8,borderRadius:2,background:bg,border:`1px solid ${border}`,display:'inline-block'}}/>
+      <span style={{width:10,height:10,borderRadius:2,backgroundColor:bg,backgroundImage:patron,backgroundSize:textura==='puntos'?'5px 5px':'auto',border:`1px solid ${border}`,display:'inline-block'}}/>
       {label}
     </span>
   )
@@ -143,13 +154,26 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
             const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
             const reg = regByFecha[fecha]
             const tipo = tipoDia(fecha)
-            const col = reg ? (esNoTrabajado(reg) ? AUSENTE : VERDE) : TIPO_COLOR[tipo]
+            const esPasadoCelda = fecha <= hoy
+            let col, estado
+            if (reg && !esNoTrabajado(reg)) {
+              col = VERDE
+              estado = reg.cantidad === 0.5 ? 'medioDia' : 'completo'
+            } else if (reg && esNoTrabajado(reg)) {
+              col = AUSENTE
+              estado = 'noTrabajado'
+            } else {
+              col = TIPO_COLOR[tipo]
+              estado = (tipo !== 'rojo' && esPasadoCelda) ? 'noTrabajado' : null
+            }
+            const textura = estiloTextura(estado, col.border)
             const selected = seleccionSet.has(fecha)
             const feriado = FERIADOS_SET.has(fecha)
             return (
               <button key={i} type="button" onClick={()=>onToggle(fecha)}
                 title={feriado ? 'Feriado' : tipo==='rojo' ? 'Domingo' : tipo==='amarillo' ? 'Sábado' : ''}
-                style={{aspectRatio:'1',border:`1px solid ${selected?anilloSel:col.border}`,borderRadius:6,background:col.bg,color:col.text,
+                style={{aspectRatio:'1',border:`1px solid ${selected?anilloSel:col.border}`,borderRadius:6,backgroundColor:col.bg,color:col.text,
+                  ...textura,
                   fontSize:11,fontWeight:selected?700:500,cursor:'pointer',fontFamily:'inherit',position:'relative',
                   boxShadow:selected?`0 0 0 2px ${anilloSel}55`:'none',padding:0}}>
                 {d}
@@ -159,8 +183,9 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
           })}
         </div>
         <div style={{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}}>
-          <Leyenda bg={VERDE.bg} border={VERDE.border} label="Trabajado"/>
-          <Leyenda bg={AUSENTE.bg} border={AUSENTE.border} label="No trabajado"/>
+          <Leyenda bg={VERDE.bg} border={VERDE.border} label="Día completo trabajado"/>
+          <Leyenda bg={VERDE.bg} border={VERDE.border} label="Medio día trabajado" textura="rayas"/>
+          <Leyenda bg={AUSENTE.bg} border={AUSENTE.border} label="No trabajado" textura="puntos"/>
           <Leyenda bg={TIPO_COLOR.rojo.bg} border={TIPO_COLOR.rojo.border} label="Domingo/feriado"/>
           <Leyenda bg={TIPO_COLOR.amarillo.bg} border={TIPO_COLOR.amarillo.border} label="Sábado"/>
           <Leyenda bg={TIPO_COLOR.gris.bg} border={TIPO_COLOR.gris.border} label="Día hábil"/>
