@@ -100,8 +100,8 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
   const hoy = new Date().toISOString().slice(0,10)
 
   // hábiles y sábados sin trabajar (asumidos o marcados explícitamente) = déficit
-  // hábil sin trabajar = -1 día · sábado sin trabajar = -0,5 día (solo se espera medio día)
-  let habilesFaltantes = 0, sabadosFaltantes = 0, noRegistrados = 0, domFerTrabajado = 0
+  // hábil sin trabajar = -1 día · hábil trabajado medio día = -0,5 día · sábado sin trabajar = -0,5 día (solo se espera medio día)
+  let habilesFaltantes = 0, habilesMedioDia = 0, sabadosFaltantes = 0, noRegistrados = 0, domFerTrabajado = 0
   for (let d=1; d<=diasEnMes; d++) {
     const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
     const tipo = tipoDia(fecha)
@@ -109,11 +109,12 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
     const trabajado = !!reg && !esNoTrabajado(reg)
     const esPasado = fecha <= hoy
     if (tipo==='gris' && !trabajado && esPasado) habilesFaltantes++
+    if (tipo==='gris' && trabajado && reg.cantidad===0.5) habilesMedioDia++
     if (tipo==='amarillo' && !trabajado && esPasado) sabadosFaltantes++
     if (tipo!=='rojo' && !reg && esPasado) noRegistrados++
     if (tipo==='rojo' && trabajado) domFerTrabajado += (reg.cantidad||0)
   }
-  const totalNoTrabajados = habilesFaltantes + sabadosFaltantes*0.5
+  const totalNoTrabajados = habilesFaltantes + habilesMedioDia*0.5 + sabadosFaltantes*0.5
 
   function cambiarMes(delta) {
     let m = viewM+delta, y = viewY
@@ -172,7 +173,11 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
         <div className="stat-card" style={{padding:'10px 12px'}}>
           <div className="stat-label" style={{fontSize:10}}>Días no trabajados (debían trabajarse)</div>
           <div className="stat-value" style={{color:'#993C1D',fontSize:18}}>{fmtNum(totalNoTrabajados)}</div>
-          <div className="stat-sub" style={{fontSize:10}}>{habilesFaltantes} día{habilesFaltantes===1?'':'s'} hábil{habilesFaltantes===1?'':'es'} + {sabadosFaltantes} sábado{sabadosFaltantes===1?'':'s'} = {fmtNum(totalNoTrabajados)}</div>
+          <div className="stat-sub" style={{fontSize:10}}>
+            {habilesFaltantes} hábil{habilesFaltantes===1?'':'es'}
+            {habilesMedioDia>0 && ` + ${habilesMedioDia} medio día hábil${habilesMedioDia===1?'':'s'}`}
+            {' '}+ {sabadosFaltantes} sábado{sabadosFaltantes===1?'':'s'} = {fmtNum(totalNoTrabajados)}
+          </div>
         </div>
         <div className="stat-card" style={{padding:'10px 12px'}}>
           <div className="stat-label" style={{fontSize:10}}>Domingos/feriados trabajados</div>
@@ -282,6 +287,7 @@ function FormRegistro({ tareas, registros, quienRegistra, onSave, onCancel }) {
 
   const hayRojo = fechas.some(fc=>tipoDia(fc)==='rojo')
   const haySabado = fechas.some(fc=>tipoDia(fc)==='amarillo')
+  const hayHabilMedioDia = modo==='trabajado' && form.cantidad===0.5 && fechas.some(fc=>tipoDia(fc)==='gris')
 
   async function save(e) {
     e.preventDefault()
@@ -336,10 +342,11 @@ function FormRegistro({ tareas, registros, quienRegistra, onSave, onCancel }) {
           <MiniCalendario seleccion={fechas} onToggle={toggleFecha} registros={registros} modo={modo}/>
         </div>
 
-        {fechas.length > 0 && (hayRojo || haySabado) && (
+        {fechas.length > 0 && (hayRojo || haySabado || hayHabilMedioDia) && (
           <div style={{fontSize:10,color:'#6B3E22',background:'#F5EDD8',border:'1px solid #C8A96E',borderRadius:6,padding:'6px 10px'}}>
             {hayRojo && modo==='trabajado' && <div>⚠ Hay domingos/feriados en la selección — cuentan doble.</div>}
             {haySabado && modo==='trabajado' && <div>Sábado — se espera solo medio día; día completo paga 1 día entero.</div>}
+            {hayHabilMedioDia && <div>⚠ Medio día un día hábil (lunes a viernes) cuenta como medio día no trabajado.</div>}
           </div>
         )}
 
