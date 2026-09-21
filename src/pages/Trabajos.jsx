@@ -1,10 +1,8 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { cargarMaestro } from '../lib/maestros'
 
-const CENTROS = ['Producción','Costos únicos','Comercialización','Alquiler','Administrativo','Mantenimiento de infraestructura','Inversiones / infraestructura','Servicios']
-cargarMaestro('centro_costos', CENTROS)
 const CAMPANHAS = ['26-27','25-26','24-25','23-24']
 cargarMaestro('campanha', CAMPANHAS)
 const PRIORIDADES = ['alta','media','baja']
@@ -17,12 +15,152 @@ const ESTADO_COLOR = { pendiente:'#A08060', en_progreso:'#2C5A6A', hecho:'#2E4F2
 const ESTADO_BG    = { pendiente:'#EFECE4', en_progreso:'#E4F0F4', hecho:'#EBF4E8' }
 const ESTADO_LABEL = { pendiente:'Pendiente', en_progreso:'En progreso', hecho:'✓ Hecho' }
 
+// ── Feriados Argentina 2026 (incluye traslados oficiales) ─────────────────────
+const FERIADOS_2026 = [
+  { fecha:'2026-01-01', nombre:'Año Nuevo' },
+  { fecha:'2026-02-16', nombre:'Carnaval' },
+  { fecha:'2026-02-17', nombre:'Carnaval' },
+  { fecha:'2026-03-24', nombre:'Día Nacional de la Memoria por la Verdad y la Justicia' },
+  { fecha:'2026-04-02', nombre:'Día del Veterano y de los Caídos en la Guerra de Malvinas' },
+  { fecha:'2026-04-03', nombre:'Viernes Santo' },
+  { fecha:'2026-05-01', nombre:'Día del Trabajador' },
+  { fecha:'2026-05-25', nombre:'Día de la Revolución de Mayo' },
+  { fecha:'2026-06-15', nombre:'Paso a la Inmortalidad del Gral. Güemes (trasladado)' },
+  { fecha:'2026-06-20', nombre:'Paso a la Inmortalidad del Gral. Belgrano' },
+  { fecha:'2026-07-09', nombre:'Día de la Independencia' },
+  { fecha:'2026-08-17', nombre:'Paso a la Inmortalidad del Gral. San Martín' },
+  { fecha:'2026-10-12', nombre:'Día del Respeto a la Diversidad Cultural' },
+  { fecha:'2026-11-23', nombre:'Día de la Soberanía Nacional (trasladado)' },
+  { fecha:'2026-12-08', nombre:'Inmaculada Concepción de María' },
+  { fecha:'2026-12-25', nombre:'Navidad' },
+]
+const FERIADOS_SET = new Set(FERIADOS_2026.map(f=>f.fecha))
+
+// domingo/feriado = 'rojo' · sábado = 'amarillo' · resto = 'gris'
+function tipoDia(fecha) {
+  if (!fecha) return 'gris'
+  const d = new Date(fecha+'T12:00:00')
+  const dow = d.getDay()
+  if (dow === 0 || FERIADOS_SET.has(fecha)) return 'rojo'
+  if (dow === 6) return 'amarillo'
+  return 'gris'
+}
+
 function fmtFecha(f) {
   if (!f) return '—'
-  return new Date(f+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'})
+  return new Date(f+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit',weekday:'short'})
 }
 function fmtCantidad(v) {
-  return v === 0.5 ? '½ día' : v === 1 ? '1 día' : `${v} días`
+  return v === 0.5 ? '½ día' : v === 1 ? '1 día' : v === 2 ? '2 días (doble)' : `${v} días`
+}
+
+// ── MiniCalendario ──────────────────────────────────────────────────────────
+const DIAS_SEMANA = ['L','M','M','J','V','S','D']
+const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+const TIPO_COLOR = {
+  rojo:     { bg:'#FAECE7', border:'#F0997B', text:'#993C1D' },
+  amarillo: { bg:'#F5EDD8', border:'#C8A96E', text:'#6B3E22' },
+  gris:     { bg:'#EFECE4', border:'#D8C9A8', text:'#7A6040' },
+}
+const VERDE = { bg:'#EBF4E8', border:'#9DC87A', text:'#2E4F26' }
+
+function Leyenda({ bg, border, label }) {
+  return (
+    <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:9,color:'var(--text-muted)'}}>
+      <span style={{width:8,height:8,borderRadius:2,background:bg,border:`1px solid ${border}`,display:'inline-block'}}/>
+      {label}
+    </span>
+  )
+}
+
+function MiniCalendario({ value, onChange, registros }) {
+  const inicial = value ? new Date(value+'T12:00:00') : new Date()
+  const [viewY, setViewY] = useState(inicial.getFullYear())
+  const [viewM, setViewM] = useState(inicial.getMonth())
+
+  const regByFecha = {}
+  registros.forEach(r => { if (r.fecha) regByFecha[r.fecha] = r })
+
+  const primerDia  = new Date(viewY, viewM, 1)
+  const diasEnMes  = new Date(viewY, viewM+1, 0).getDate()
+  const offset     = (primerDia.getDay()+6)%7 // lunes = 0
+
+  const celdas = []
+  for (let i=0;i<offset;i++) celdas.push(null)
+  for (let d=1; d<=diasEnMes; d++) celdas.push(d)
+
+  const hoy = new Date().toISOString().slice(0,10)
+
+  let noTrabajados = 0, indebidos = 0
+  for (let d=1; d<=diasEnMes; d++) {
+    const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    const tipo = tipoDia(fecha)
+    const trabajado = !!regByFecha[fecha]
+    if (tipo==='gris' && !trabajado && fecha<=hoy) noTrabajados++
+    if (tipo==='rojo' && trabajado) indebidos++
+  }
+
+  function cambiarMes(delta) {
+    let m = viewM+delta, y = viewY
+    if (m<0){m=11;y--}
+    if (m>11){m=0;y++}
+    setViewM(m); setViewY(y)
+  }
+
+  const navBtn = {width:24,height:24,borderRadius:5,border:'1px solid #D8C9A8',background:'transparent',cursor:'pointer',fontFamily:'inherit',fontSize:14,color:'var(--arcilla)'}
+
+  return (
+    <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'flex-start'}}>
+      <div style={{minWidth:250,flex:'0 0 auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <button type="button" onClick={()=>cambiarMes(-1)} style={navBtn}>‹</button>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--tierra)',textTransform:'capitalize'}}>{MESES[viewM]} {viewY}</span>
+          <button type="button" onClick={()=>cambiarMes(1)} style={navBtn}>›</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:3}}>
+          {DIAS_SEMANA.map((d,i)=><div key={i} style={{fontSize:9,textAlign:'center',color:'#A08060',fontWeight:600}}>{d}</div>)}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3}}>
+          {celdas.map((d,i)=>{
+            if (!d) return <div key={i}/>
+            const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+            const trabajado = !!regByFecha[fecha]
+            const tipo = tipoDia(fecha)
+            const col = trabajado ? VERDE : TIPO_COLOR[tipo]
+            const selected = fecha === value
+            const feriado = FERIADOS_SET.has(fecha)
+            return (
+              <button key={i} type="button" onClick={()=>onChange(fecha)}
+                title={feriado ? 'Feriado' : tipo==='rojo' ? 'Domingo' : tipo==='amarillo' ? 'Sábado' : ''}
+                style={{aspectRatio:'1',border:`1px solid ${selected?'#3B2E1E':col.border}`,borderRadius:6,background:col.bg,color:col.text,
+                  fontSize:11,fontWeight:selected?700:500,cursor:'pointer',fontFamily:'inherit',
+                  boxShadow:selected?'0 0 0 2px rgba(59,46,30,0.25)':'none',padding:0}}>
+                {d}
+              </button>
+            )
+          })}
+        </div>
+        <div style={{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}}>
+          <Leyenda bg={VERDE.bg} border={VERDE.border} label="Trabajado"/>
+          <Leyenda bg={TIPO_COLOR.rojo.bg} border={TIPO_COLOR.rojo.border} label="Domingo/feriado"/>
+          <Leyenda bg={TIPO_COLOR.amarillo.bg} border={TIPO_COLOR.amarillo.border} label="Sábado"/>
+          <Leyenda bg={TIPO_COLOR.gris.bg} border={TIPO_COLOR.gris.border} label="Día hábil"/>
+        </div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:8,minWidth:150,flex:'1 1 150px'}}>
+        <div className="stat-card" style={{padding:'10px 12px'}}>
+          <div className="stat-label" style={{fontSize:10}}>Días no trabajados</div>
+          <div className="stat-value" style={{color:'#993C1D',fontSize:20}}>{noTrabajados}</div>
+          <div className="stat-sub" style={{fontSize:10}}>hábiles sin registrar en {MESES[viewM]}</div>
+        </div>
+        <div className="stat-card" style={{padding:'10px 12px'}}>
+          <div className="stat-label" style={{fontSize:10}}>Trabajados sin corresponder</div>
+          <div className="stat-value" style={{color:'#993C1D',fontSize:20}}>{indebidos}</div>
+          <div className="stat-sub" style={{fontSize:10}}>domingos/feriados trabajados (pagan doble)</div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── FormTarea ────────────────────────────────────────────────────────────────
@@ -98,7 +236,7 @@ function FormTarea({ tarea, onSave, onCancel, categorias = ['Campo','Taller','In
 }
 
 // ── FormRegistro ─────────────────────────────────────────────────────────────
-function FormRegistro({ tareas, quienRegistra, onSave, onCancel }) {
+function FormRegistro({ tareas, registros, quienRegistra, onSave, onCancel }) {
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
     cantidad: 1,
@@ -106,28 +244,12 @@ function FormRegistro({ tareas, quienRegistra, onSave, onCancel }) {
     tarea_id: '',
     campanha: '25-26',
   })
-  const [centros, setCentros] = useState([{ centro: 'Producción', pct: 100 }])
   const [saving, setSaving] = useState(false)
   const f = (k,v) => setForm(p=>({...p,[k]:v}))
-
-  const totalPct = centros.reduce((a,c)=>a+(parseFloat(c.pct)||0),0)
-  const pctOk    = Math.abs(totalPct - 100) < 0.1
-
-  function updateCentro(i, k, v) {
-    setCentros(prev => prev.map((c,idx) => idx===i ? {...c,[k]:v} : c))
-  }
-  function addCentro() {
-    if (centros.length >= CENTROS.length) return
-    setCentros(prev => [...prev, { centro: CENTROS.find(c=>!prev.map(p=>p.centro).includes(c))||CENTROS[0], pct: 0 }])
-  }
-  function removeCentro(i) {
-    if (centros.length <= 1) return
-    setCentros(prev => prev.filter((_,idx)=>idx!==i))
-  }
+  const tipo = tipoDia(form.fecha)
 
   async function save(e) {
     e.preventDefault()
-    if (!pctOk) { alert('Los porcentajes de centro de costos deben sumar 100%'); return }
     setSaving(true)
     await supabase.from('trabajos_registros').insert({
       fecha: form.fecha,
@@ -135,7 +257,6 @@ function FormRegistro({ tareas, quienRegistra, onSave, onCancel }) {
       descripcion: form.descripcion || null,
       tarea_id: form.tarea_id || null,
       campanha: form.campanha,
-      centros_costos: centros,
       quien_registro: quienRegistra,
     })
     setSaving(false); onSave()
@@ -145,11 +266,20 @@ function FormRegistro({ tareas, quienRegistra, onSave, onCancel }) {
 
   return (
     <div className="card mb-3" style={{background:'#F5F9F0',borderColor:'var(--brote)'}}>
-      <h3 style={{marginBottom:14}}>Registrar jornada — Santi</h3>
+      <h3 style={{marginBottom:14}}>Registrar jornada — Walter</h3>
       <form onSubmit={save} style={{display:'flex',flexDirection:'column',gap:12}}>
+        <div className="field">
+          <label className="label">Fecha (elegí el día en el calendario)</label>
+          <MiniCalendario value={form.fecha} onChange={v=>f('fecha',v)} registros={registros}/>
+        </div>
+
         <div className="grid-2">
-          <div className="field"><label className="label">Fecha</label>
-            <input style={si} type="date" value={form.fecha} onChange={e=>f('fecha',e.target.value)} required/>
+          <div className="field"><label className="label">Fecha seleccionada</label>
+            <div style={{...si,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <span style={{textTransform:'capitalize'}}>{fmtFecha(form.fecha)}</span>
+              {tipo==='rojo' && <span style={{fontSize:10,color:'#993C1D',fontWeight:600}}>Domingo/feriado — no debería trabajarse (cuenta doble si se trabaja)</span>}
+              {tipo==='amarillo' && <span style={{fontSize:10,color:'#6B3E22',fontWeight:600}}>Sábado — se espera solo medio día</span>}
+            </div>
           </div>
           <div className="field"><label className="label">Cantidad trabajada</label>
             <div style={{display:'flex',gap:6}}>
@@ -188,46 +318,11 @@ function FormRegistro({ tareas, quienRegistra, onSave, onCancel }) {
             placeholder="Qué se hizo, dónde, con qué materiales..."/>
         </div>
 
-        {/* Centros de costos */}
-        <div style={{background:'#EAF2F8',border:'1px solid #7A9EAD',borderRadius:8,padding:'12px 14px'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:600,color:'#2C5A6A',textTransform:'uppercase',letterSpacing:'0.05em'}}>Centro de costos</div>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:11,color:pctOk?'#2E4F26':'#993C1D',fontWeight:600}}>Total: {totalPct.toFixed(0)}%</span>
-              <button type="button" onClick={addCentro}
-                style={{padding:'3px 10px',borderRadius:5,fontSize:11,cursor:'pointer',border:'1px solid #7A9EAD',background:'white',color:'#2C5A6A',fontFamily:'inherit'}}>
-                + Centro
-              </button>
-            </div>
-          </div>
-          {centros.map((c,i)=>(
-            <div key={i} style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
-              <select value={c.centro} onChange={e=>updateCentro(i,'centro',e.target.value)}
-                style={{flex:1,padding:'6px 8px',border:'1px solid #B8D0D8',borderRadius:6,fontSize:12,fontFamily:'inherit',background:'white'}}>
-                {CENTROS.map(ct=><option key={ct}>{ct}</option>)}
-              </select>
-              <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
-                <input type="number" min="0" max="100" step="5" value={c.pct}
-                  onChange={e=>updateCentro(i,'pct',e.target.value)}
-                  style={{width:64,padding:'6px 8px',border:'1px solid #B8D0D8',borderRadius:6,fontSize:12,fontFamily:'inherit',textAlign:'right'}}/>
-                <span style={{fontSize:12,color:'#4E7A8A'}}>%</span>
-              </div>
-              {centros.length > 1 && (
-                <button type="button" onClick={()=>removeCentro(i)}
-                  style={{width:24,height:24,borderRadius:4,border:'1px solid #F0997B',background:'#FAECE7',color:'#993C1D',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-          {!pctOk && <div style={{fontSize:11,color:'#993C1D',marginTop:4}}>⚠ Los porcentajes deben sumar 100%</div>}
-        </div>
-
         {quienRegistra && (
           <div style={{fontSize:11,color:'var(--text-muted)'}}>Registrado como: <strong>{quienRegistra}</strong></div>
         )}
         <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-primary" type="submit" disabled={saving||!pctOk}>{saving?'Guardando...':'Guardar jornada'}</button>
+          <button className="btn btn-primary" type="submit" disabled={saving}>{saving?'Guardando...':'Guardar jornada'}</button>
           <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancelar</button>
         </div>
       </form>
@@ -457,6 +552,7 @@ export default function Trabajos() {
           {showFormRegistro && canEdit && (
             <FormRegistro
               tareas={tareas}
+              registros={registros}
               quienRegistra={quienRegistra}
               onSave={async()=>{ setShowFormRegistro(false); await fetchAll() }}
               onCancel={()=>setShowFormRegistro(false)}
@@ -514,7 +610,6 @@ export default function Trabajos() {
                     <th style={{padding:'8px 12px',textAlign:'left',fontSize:10,fontWeight:600,color:'#A08060',textTransform:'uppercase'}}>Fecha</th>
                     <th style={{padding:'8px 12px',textAlign:'center',fontSize:10,fontWeight:600,color:'#A08060',textTransform:'uppercase'}}>Cantidad</th>
                     <th style={{padding:'8px 12px',textAlign:'left',fontSize:10,fontWeight:600,color:'#A08060',textTransform:'uppercase'}}>Descripción / Tarea</th>
-                    <th style={{padding:'8px 12px',textAlign:'left',fontSize:10,fontWeight:600,color:'#A08060',textTransform:'uppercase'}}>Centros de costo</th>
                     <th style={{padding:'8px 12px',textAlign:'left',fontSize:10,fontWeight:600,color:'#A08060',textTransform:'uppercase'}}>Campaña</th>
                     {canEdit && <th></th>}
                   </tr>
@@ -522,9 +617,13 @@ export default function Trabajos() {
                 <tbody>
                   {registrosFiltrados.map(r=>{
                     const tarea = tareas.find(t=>t.id===r.tarea_id)
+                    const tipo = tipoDia(r.fecha)
                     return (
                       <tr key={r.id} style={{borderBottom:'1px solid #EDE0C8'}}>
-                        <td style={{padding:'10px 12px',whiteSpace:'nowrap',color:'var(--text-muted)'}}>{fmtFecha(r.fecha)}</td>
+                        <td style={{padding:'10px 12px',whiteSpace:'nowrap',color:'var(--text-muted)'}}>
+                          {fmtFecha(r.fecha)}
+                          {tipo==='rojo' && <span title="Domingo/feriado trabajado" style={{marginLeft:5,color:'#993C1D'}}>⚠</span>}
+                        </td>
                         <td style={{padding:'10px 12px',textAlign:'center'}}>
                           <span style={{background:r.cantidad===1?'#EBF4E8':'#F5EDD8',color:r.cantidad===1?'#2E4F26':'#6B3E22',borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
                             {fmtCantidad(r.cantidad)}
@@ -534,15 +633,6 @@ export default function Trabajos() {
                           {tarea && <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)',marginBottom:2}}>{tarea.titulo}</div>}
                           {r.descripcion && <div style={{fontSize:11,color:'var(--text-muted)',lineHeight:1.3}}>{r.descripcion}</div>}
                           {!tarea && !r.descripcion && <span style={{color:'var(--text-muted)'}}>—</span>}
-                        </td>
-                        <td style={{padding:'10px 12px'}}>
-                          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                            {(r.centros_costos||[]).map((c,i)=>(
-                              <span key={i} style={{fontSize:10,background:'#E4F0F4',color:'#2C5A6A',borderRadius:20,padding:'2px 7px',whiteSpace:'nowrap'}}>
-                                {c.centro} {c.pct}%
-                              </span>
-                            ))}
-                          </div>
                         </td>
                         <td style={{padding:'10px 12px'}}>
                           <span style={{fontSize:10,background:'#EFECE4',color:'#7A6040',borderRadius:20,padding:'2px 7px'}}>{r.campanha||'—'}</span>
@@ -563,7 +653,7 @@ export default function Trabajos() {
                   <tr style={{background:'#F5F0E4',fontWeight:600}}>
                     <td style={{padding:'10px 12px',fontSize:11,color:'var(--text-muted)'}}>{registrosFiltrados.length} jornadas</td>
                     <td style={{padding:'10px 12px',textAlign:'center',color:'#2E4F26'}}>{totalDias} días</td>
-                    <td colSpan={4}></td>
+                    <td colSpan={3}></td>
                   </tr>
                 </tfoot>
               </table>
