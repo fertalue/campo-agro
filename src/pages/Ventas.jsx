@@ -782,6 +782,7 @@ export default function Ventas() {
   const [fCtNombre, setFCtNombre]     = useState('Todos')
   const [fCampanha, setFCampanha] = useState([])
   const [fGrano,    setFGrano]    = useState([])
+  const [agrupSoja, setAgrupSoja] = useState(() => { try { return localStorage.getItem('ventas_agrup_soja') === '1' } catch { return false } })
   const [fTipo,     setFTipo]     = useState([])
   const [fTitular,  setFTitular]  = useState([])
   const [busqueda,  setBusqueda]  = useState('')
@@ -857,9 +858,17 @@ export default function Ventas() {
 
   // Filtros
   const matchArr = (arr, val) => arr.length === 0 || arr.includes(val)
+  // Agrupar Soja + Soja semilla: gk() lleva 'Soja semilla' a 'Soja' cuando el agrupado está activo
+  const gk = g => (agrupSoja && g === 'Soja semilla') ? 'Soja' : g
+  const gLabel = g => (agrupSoja && g === 'Soja') ? 'Soja + semilla' : g
+  function toggleAgrupSoja(on) {
+    setAgrupSoja(on)
+    try { localStorage.setItem('ventas_agrup_soja', on ? '1' : '0') } catch { /* sin storage */ }
+    if (on) setFGrano(prev => [...new Set(prev.map(x => x === 'Soja semilla' ? 'Soja' : x))])
+  }
   const filtered = viajes.filter(v => {
     if (!matchArr(fCampanha, v.campanha)) return false
-    if (!matchArr(fGrano, v.grano))       return false
+    if (!(fGrano.length === 0 || fGrano.map(gk).includes(gk(v.grano)))) return false
     if (!matchArr(fTipo, v.tipo))         return false
     if (!matchArr(fTitular, v.titular))   return false
     if (busqueda) {
@@ -881,13 +890,13 @@ export default function Ventas() {
   // Por grano
   const byGrano = {}
   filtered.forEach(v => {
-    if (!byGrano[v.grano]) byGrano[v.grano] = { vendido: 0, count: 0 }
-    byGrano[v.grano].vendido += v.neto_romaneo || 0
-    byGrano[v.grano].count   += 1
+    if (!byGrano[gk(v.grano)]) byGrano[gk(v.grano)] = { vendido: 0, count: 0 }
+    byGrano[gk(v.grano)].vendido += v.neto_romaneo || 0
+    byGrano[gk(v.grano)].count   += 1
   })
   cosechaFiltrada.forEach(c => {
-    if (!byGrano[c.grano]) byGrano[c.grano] = { vendido: 0, count: 0 }
-    byGrano[c.grano].cosecha = (byGrano[c.grano].cosecha||0) + (c.neto_romaneo||0)
+    if (!byGrano[gk(c.grano)]) byGrano[gk(c.grano)] = { vendido: 0, count: 0 }
+    byGrano[gk(c.grano)].cosecha = (byGrano[gk(c.grano)].cosecha||0) + (c.neto_romaneo||0)
   })
 
   // Por titular
@@ -901,8 +910,8 @@ export default function Ventas() {
   const granos = Object.keys(byGrano)
 
   // Distribución — por grano individual (no agrupado en categorias)
-  const distrib = GRANOS.map(grano => {
-    const cosechasGrano = cosechaFiltrada.filter(c => c.grano === grano)
+  const distrib = [...new Set(GRANOS.map(gk))].map(grano => {
+    const cosechasGrano = cosechaFiltrada.filter(c => gk(c.grano) === grano)
     const cosechaTotal  = cosechasGrano.reduce((a,b) => a + (b.neto_romaneo||0), 0)
     if (cosechaTotal === 0) return null
     // Si algún registro tiene kg personalizados, usarlos (suma de todos los registros del grano)
@@ -918,14 +927,14 @@ export default function Ventas() {
       cuotaFer  = disponible / 2
       cuotaLeo  = disponible / 2
     }
-    const viajesCat  = viajes.filter(v => matchArr(fCampanha, v.campanha) && v.grano === grano && v.tipo === 'Venta')
+    const viajesCat  = viajes.filter(v => matchArr(fCampanha, v.campanha) && gk(v.grano) === grano && v.tipo === 'Venta')
     const vendidoFer = viajesCat.filter(v => v.titular === 'Fer').reduce((a,b) => a + (b.neto_romaneo||0), 0)
     const vendidoLeo = viajesCat.filter(v => v.titular === 'Leo').reduce((a,b) => a + (b.neto_romaneo||0), 0)
-    const viajesAlq  = viajes.filter(v => matchArr(fCampanha, v.campanha) && v.grano === grano && v.tipo === 'Alquiler')
+    const viajesAlq  = viajes.filter(v => matchArr(fCampanha, v.campanha) && gk(v.grano) === grano && v.tipo === 'Alquiler')
     const entregadoAlquiler = viajesAlq.reduce((a,b) => a + (b.neto_romaneo||0), 0)
     // Contratos por persona (tn/qq/kg -> kg). "ambos" se reparte 50/50
     const toKgCt = ct => { const vv = ct.volumen||0; return ct.unidad==='qq' ? vv*100 : ct.unidad==='kg' ? vv : vv*1000 }
-    const ctGrano = contratos.filter(ct => matchArr(fCampanha, ct.campanha) && ct.producto === grano)
+    const ctGrano = contratos.filter(ct => matchArr(fCampanha, ct.campanha) && gk(ct.producto) === grano)
     const ctFerKg = ctGrano.filter(ct=>ct.a_nombre==='Fer').reduce((a,c)=>a+toKgCt(c),0)
                   + ctGrano.filter(ct=>ct.a_nombre==='ambos').reduce((a,c)=>a+toKgCt(c)/2,0)
     const ctLeoKg = ctGrano.filter(ct=>ct.a_nombre==='Leo').reduce((a,c)=>a+toKgCt(c),0)
@@ -969,7 +978,11 @@ export default function Ventas() {
       {tab !== 'contratos' && tab !== 'balanza' && (
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
         <VtMultiSelect label="Campaña"  options={CAMPANHAS}  selected={fCampanha}  onChange={setFCampanha}  placeholder="Todas" />
-        <VtMultiSelect label="Grano"    options={[...new Set(viajes.map(v=>v.grano).filter(Boolean))].sort()} selected={fGrano} onChange={setFGrano} placeholder="Todos" />
+        <VtMultiSelect label="Grano"    options={[...new Set(viajes.map(v=>gk(v.grano)).filter(Boolean))].sort()} selected={fGrano} onChange={setFGrano} placeholder="Todos" />
+        <label title="Suma Soja y Soja semilla como un solo grano en Resumen, Distribución y Pesada vs Puerto" style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, cursor:'pointer', color:'var(--arcilla)', userSelect:'none' }}>
+          <input type="checkbox" checked={agrupSoja} onChange={e => toggleAgrupSoja(e.target.checked)} />
+          Agrupar Soja + Soja semilla
+        </label>
         <VtMultiSelect label="Tipo"     options={TIPOS}      selected={fTipo}      onChange={setFTipo}      placeholder="Todos" />
         <VtMultiSelect label="Titular"  options={[...new Set(viajes.map(v=>v.titular).filter(Boolean))].sort()} selected={fTitular} onChange={setFTitular} placeholder="Todos" />
         {(fCampanha.length + fGrano.length + fTipo.length + fTitular.length) > 0 && (
@@ -1014,7 +1027,7 @@ export default function Ventas() {
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                         <div style={{ width:10, height:10, borderRadius:'50%', background:col, flexShrink:0 }}/>
-                        <span style={{ fontSize:13, fontWeight:500 }}>{g}</span>
+                        <span style={{ fontSize:13, fontWeight:500 }}>{gLabel(g)}</span>
                         <span style={{ fontSize:11, color:'var(--text-muted)' }}>({data.count} viajes)</span>
                       </div>
                       <div style={{ textAlign:'right' }}>
@@ -1074,7 +1087,7 @@ export default function Ventas() {
               const v = ct.volumen || 0
               return ct.unidad === 'qq' ? v * 100 : ct.unidad === 'kg' ? v : v * 1000
             }
-            const ctGrano = ctRes.filter(ct => ct.producto === grano)
+            const ctGrano = ctRes.filter(ct => gk(ct.producto) === grano)
             const ctFerKg   = ctGrano.filter(ct => ct.a_nombre === 'Fer').reduce((a,c) => a + toKg(c), 0)
                             + ctGrano.filter(ct => ct.a_nombre === 'ambos').reduce((a,c) => a + toKg(c) / 2, 0)
             const ctLeoKg   = ctGrano.filter(ct => ct.a_nombre === 'Leo').reduce((a,c) => a + toKg(c), 0)
@@ -1116,7 +1129,7 @@ export default function Ventas() {
                   {/* Header grano */}
                   <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
                     <div style={{ width:12, height:12, borderRadius:'50%', background:PROD_COLORS[d.grano]||'#888', flexShrink:0 }}/>
-                    <span style={{ fontSize:15, fontWeight:600, color:'var(--tierra)' }}>{d.grano}</span>
+                    <span style={{ fontSize:15, fontWeight:600, color:'var(--tierra)' }}>{gLabel(d.grano)}</span>
                     <span style={{ fontSize:11, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
                   </div>
                   {/* Dos columnas Fer | Leo */}
@@ -1469,7 +1482,7 @@ export default function Ventas() {
       {tab === 'mermas' && (
         <div>
           {granos.map(g => {
-            const gViajes = filtered.filter(v => v.grano === g && v.neto)
+            const gViajes = filtered.filter(v => gk(v.grano) === g && v.neto)
             if (!gViajes.length) return null
             const gNeto     = gViajes.reduce((a,b) => a+(b.neto||0), 0)
             const gDescarg  = gViajes.reduce((a,b) => a+(b.kg_descargados||0), 0)
@@ -1484,7 +1497,7 @@ export default function Ventas() {
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <div style={{ width:12, height:12, borderRadius:'50%', background:col }}/>
-                    <h3 style={{ fontSize:14 }}>{g}</h3>
+                    <h3 style={{ fontSize:14 }}>{gLabel(g)}</h3>
                     <span style={{ fontSize:11, color:'var(--text-muted)' }}>{gViajes.length} viajes</span>
                   </div>
                   <span style={{ fontSize:12, color: pctMerma > 3 ? '#993C1D' : 'var(--musgo)', fontWeight:600 }}>
@@ -1604,7 +1617,7 @@ export default function Ventas() {
             <div key={d.cat} className="card" style={{ marginBottom:16 }}>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
                 <div style={{ width:14, height:14, borderRadius:'50%', background: GRANO_COLOR[d.grano] || '#4A7C3F' }}/>
-                <h3 style={{ fontSize:15 }}>{d.grano}</h3>
+                <h3 style={{ fontSize:15 }}>{gLabel(d.grano)}</h3>
                 <span style={{ fontSize:12, color:'var(--text-muted)' }}>Cosecha total: {fmtTn(d.cosechaTotal)}</span>
               </div>
               <div style={{ display:'flex', height:36, borderRadius:8, overflow:'hidden', marginBottom:16, fontSize:11, fontWeight:500 }}>
