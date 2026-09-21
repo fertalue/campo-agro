@@ -56,6 +56,9 @@ function fmtCantidad(v) {
 function esNoTrabajado(r) {
   return r?.tipo === 'no_trabajado'
 }
+function fmtNum(n) {
+  return n.toLocaleString('es-AR', { minimumFractionDigits: n % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })
+}
 
 // ── MiniCalendario ──────────────────────────────────────────────────────────
 const DIAS_SEMANA = ['L','M','M','J','V','S','D']
@@ -96,15 +99,21 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
 
   const hoy = new Date().toISOString().slice(0,10)
 
-  let noTrabajados = 0, indebidos = 0
+  // hábiles y sábados sin trabajar (asumidos o marcados explícitamente) = déficit
+  // hábil sin trabajar = -1 día · sábado sin trabajar = -0,5 día (solo se espera medio día)
+  let habilesFaltantes = 0, sabadosFaltantes = 0, noRegistrados = 0, domFerTrabajado = 0
   for (let d=1; d<=diasEnMes; d++) {
     const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
     const tipo = tipoDia(fecha)
     const reg = regByFecha[fecha]
     const trabajado = !!reg && !esNoTrabajado(reg)
-    if (tipo==='gris' && !trabajado && fecha<=hoy) noTrabajados++
-    if (tipo==='rojo' && trabajado) indebidos++
+    const esPasado = fecha <= hoy
+    if (tipo==='gris' && !trabajado && esPasado) habilesFaltantes++
+    if (tipo==='amarillo' && !trabajado && esPasado) sabadosFaltantes++
+    if (tipo!=='rojo' && !reg && esPasado) noRegistrados++
+    if (tipo==='rojo' && trabajado) domFerTrabajado += (reg.cantidad||0)
   }
+  const totalNoTrabajados = habilesFaltantes + sabadosFaltantes*0.5
 
   function cambiarMes(delta) {
     let m = viewM+delta, y = viewY
@@ -159,16 +168,21 @@ function MiniCalendario({ seleccion, onToggle, registros, modo }) {
           <div style={{fontSize:10,color:'var(--text-muted)',marginTop:6}}>{seleccion.length} día{seleccion.length>1?'s':''} seleccionado{seleccion.length>1?'s':''}</div>
         )}
       </div>
-      <div style={{display:'flex',flexDirection:'column',gap:8,minWidth:150,flex:'1 1 150px'}}>
+      <div style={{display:'flex',flexDirection:'column',gap:8,minWidth:190,flex:'1 1 190px'}}>
         <div className="stat-card" style={{padding:'10px 12px'}}>
-          <div className="stat-label" style={{fontSize:10}}>Días no trabajados</div>
-          <div className="stat-value" style={{color:'#993C1D',fontSize:20}}>{noTrabajados}</div>
-          <div className="stat-sub" style={{fontSize:10}}>hábiles sin trabajar en {MESES[viewM]}</div>
+          <div className="stat-label" style={{fontSize:10}}>Días no trabajados (debían trabajarse)</div>
+          <div className="stat-value" style={{color:'#993C1D',fontSize:18}}>{fmtNum(totalNoTrabajados)}</div>
+          <div className="stat-sub" style={{fontSize:10}}>{habilesFaltantes} día{habilesFaltantes===1?'':'s'} hábil{habilesFaltantes===1?'':'es'} + {sabadosFaltantes} sábado{sabadosFaltantes===1?'':'s'} = {fmtNum(totalNoTrabajados)}</div>
         </div>
         <div className="stat-card" style={{padding:'10px 12px'}}>
-          <div className="stat-label" style={{fontSize:10}}>Trabajados sin corresponder</div>
-          <div className="stat-value" style={{color:'#993C1D',fontSize:20}}>{indebidos}</div>
-          <div className="stat-sub" style={{fontSize:10}}>domingos/feriados trabajados (pagan doble)</div>
+          <div className="stat-label" style={{fontSize:10}}>Domingos/feriados trabajados</div>
+          <div className="stat-value" style={{color:'#993C1D',fontSize:18}}>{fmtNum(domFerTrabajado*2)}</div>
+          <div className="stat-sub" style={{fontSize:10}}>{fmtNum(domFerTrabajado)} día{domFerTrabajado===1?'':'s'} trabajado{domFerTrabajado===1?'':'s'} (vale doble) = {fmtNum(domFerTrabajado*2)}</div>
+        </div>
+        <div className="stat-card" style={{padding:'10px 12px'}}>
+          <div className="stat-label" style={{fontSize:10}}>Días aún no registrados</div>
+          <div className="stat-value" style={{color:'#6B3E22',fontSize:18}}>{noRegistrados}</div>
+          <div className="stat-sub" style={{fontSize:10}}>hábiles/sábados sin cargar, antes de hoy</div>
         </div>
       </div>
     </div>
