@@ -109,7 +109,7 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
   // ── Servidor: traer y cachear ──
   async function fetchServer() {
     if (!navigator.onLine) return
-    const { data, error } = await supabase.from('granos_pesajes').select('*').order('ticket_numero', { ascending: false }).limit(200)
+    const { data, error } = await supabase.from('granos_pesajes').select('*, viaje:granos_viajes(titular)').order('ticket_numero', { ascending: false }).limit(200)
     if (error || !data) return
     setAndPersist(prev => {
       const map = {}
@@ -120,7 +120,7 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
         if (!s.client_uuid) return
         const ex = prev.find(l => l.client_uuid === s.client_uuid)
         if (ex && ex._sync === 'pending') return           // conservar edición local sin sincronizar
-        map[s.client_uuid] = { ...s, _sync: 'synced', _ts: ex?._ts || Date.parse(s.created_at) || Date.now(), local_num: ex?.local_num }
+        map[s.client_uuid] = { ...s, viaje: undefined, viaje_titular: s.viaje?.titular || null, _sync: 'synced', _ts: ex?._ts || Date.parse(s.created_at) || Date.now(), local_num: ex?.local_num }
       })
       return Object.values(map)
     })
@@ -340,7 +340,7 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
           ? <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--arcilla)' }}>Todavía no hay pesajes cargados.</div>
           : <table className="vt-tbl">
               <thead><tr>
-                <th>Ticket</th><th>Fecha / hora</th><th>Patente</th><th>Cliente</th><th>Grano</th>
+                <th>Ticket</th><th>Fecha / hora</th><th>Patente</th><th>Cliente</th><th>Titular CP</th><th>Grano</th>
                 <th style={{ textAlign: 'right' }}>Tara</th><th style={{ textAlign: 'right' }}>Bruto</th><th style={{ textAlign: 'right' }}>Neto</th>
                 <th>Estado</th>{canEdit && <th></th>}
               </tr></thead>
@@ -355,6 +355,9 @@ export default function BalanzaTab({ canEdit, GRANOS = [], TITULARES = [], COMPR
                       <td style={{ color: 'var(--text-muted)' }}>{fmtFechaHora(r.fecha, r.hora_salida)}</td>
                       <td style={{ fontFamily: 'monospace' }}>{r.patente || '—'}</td>
                       <td>{r.cliente || '—'}</td>
+                      <td>{r.viaje_titular
+                        ? <strong style={{ fontWeight: 600 }}>{r.viaje_titular}</strong>
+                        : <span title="Provisorio: se confirma al vincular la CP" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{r.titular || '—'}</span>}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{r.grano || '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(r.tara)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtKg(r.kilos_bruto)}</td>
