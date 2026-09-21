@@ -53,6 +53,9 @@ function fmtFecha(f) {
 function fmtCantidad(v) {
   return v === 0.5 ? '½ día' : v === 1 ? '1 día' : v === 2 ? '2 días (doble)' : `${v} días`
 }
+function esNoTrabajado(r) {
+  return r?.tipo === 'no_trabajado'
+}
 
 // ── MiniCalendario ──────────────────────────────────────────────────────────
 const DIAS_SEMANA = ['L','M','M','J','V','S','D']
@@ -63,6 +66,7 @@ const TIPO_COLOR = {
   gris:     { bg:'#EFECE4', border:'#D8C9A8', text:'#7A6040' },
 }
 const VERDE = { bg:'#EBF4E8', border:'#9DC87A', text:'#2E4F26' }
+const AUSENTE = { bg:'#EDE7F6', border:'#B39DDB', text:'#5B3E96' } // día marcado explícitamente como no trabajado
 
 function Leyenda({ bg, border, label }) {
   return (
@@ -73,13 +77,14 @@ function Leyenda({ bg, border, label }) {
   )
 }
 
-function MiniCalendario({ value, onChange, registros }) {
-  const inicial = value ? new Date(value+'T12:00:00') : new Date()
+function MiniCalendario({ seleccion, onToggle, registros, modo }) {
+  const inicial = seleccion[0] ? new Date(seleccion[0]+'T12:00:00') : new Date()
   const [viewY, setViewY] = useState(inicial.getFullYear())
   const [viewM, setViewM] = useState(inicial.getMonth())
 
   const regByFecha = {}
   registros.forEach(r => { if (r.fecha) regByFecha[r.fecha] = r })
+  const seleccionSet = new Set(seleccion)
 
   const primerDia  = new Date(viewY, viewM, 1)
   const diasEnMes  = new Date(viewY, viewM+1, 0).getDate()
@@ -95,7 +100,8 @@ function MiniCalendario({ value, onChange, registros }) {
   for (let d=1; d<=diasEnMes; d++) {
     const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
     const tipo = tipoDia(fecha)
-    const trabajado = !!regByFecha[fecha]
+    const reg = regByFecha[fecha]
+    const trabajado = !!reg && !esNoTrabajado(reg)
     if (tipo==='gris' && !trabajado && fecha<=hoy) noTrabajados++
     if (tipo==='rojo' && trabajado) indebidos++
   }
@@ -108,6 +114,7 @@ function MiniCalendario({ value, onChange, registros }) {
   }
 
   const navBtn = {width:24,height:24,borderRadius:5,border:'1px solid #D8C9A8',background:'transparent',cursor:'pointer',fontFamily:'inherit',fontSize:14,color:'var(--arcilla)'}
+  const anilloSel = modo==='no_trabajado' ? AUSENTE.text : '#2E4F26'
 
   return (
     <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'flex-start'}}>
@@ -124,34 +131,39 @@ function MiniCalendario({ value, onChange, registros }) {
           {celdas.map((d,i)=>{
             if (!d) return <div key={i}/>
             const fecha = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-            const trabajado = !!regByFecha[fecha]
+            const reg = regByFecha[fecha]
             const tipo = tipoDia(fecha)
-            const col = trabajado ? VERDE : TIPO_COLOR[tipo]
-            const selected = fecha === value
+            const col = reg ? (esNoTrabajado(reg) ? AUSENTE : VERDE) : TIPO_COLOR[tipo]
+            const selected = seleccionSet.has(fecha)
             const feriado = FERIADOS_SET.has(fecha)
             return (
-              <button key={i} type="button" onClick={()=>onChange(fecha)}
+              <button key={i} type="button" onClick={()=>onToggle(fecha)}
                 title={feriado ? 'Feriado' : tipo==='rojo' ? 'Domingo' : tipo==='amarillo' ? 'Sábado' : ''}
-                style={{aspectRatio:'1',border:`1px solid ${selected?'#3B2E1E':col.border}`,borderRadius:6,background:col.bg,color:col.text,
-                  fontSize:11,fontWeight:selected?700:500,cursor:'pointer',fontFamily:'inherit',
-                  boxShadow:selected?'0 0 0 2px rgba(59,46,30,0.25)':'none',padding:0}}>
+                style={{aspectRatio:'1',border:`1px solid ${selected?anilloSel:col.border}`,borderRadius:6,background:col.bg,color:col.text,
+                  fontSize:11,fontWeight:selected?700:500,cursor:'pointer',fontFamily:'inherit',position:'relative',
+                  boxShadow:selected?`0 0 0 2px ${anilloSel}55`:'none',padding:0}}>
                 {d}
+                {selected && <span style={{position:'absolute',top:1,right:2,fontSize:8}}>✓</span>}
               </button>
             )
           })}
         </div>
         <div style={{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}}>
           <Leyenda bg={VERDE.bg} border={VERDE.border} label="Trabajado"/>
+          <Leyenda bg={AUSENTE.bg} border={AUSENTE.border} label="No trabajado"/>
           <Leyenda bg={TIPO_COLOR.rojo.bg} border={TIPO_COLOR.rojo.border} label="Domingo/feriado"/>
           <Leyenda bg={TIPO_COLOR.amarillo.bg} border={TIPO_COLOR.amarillo.border} label="Sábado"/>
           <Leyenda bg={TIPO_COLOR.gris.bg} border={TIPO_COLOR.gris.border} label="Día hábil"/>
         </div>
+        {seleccion.length > 0 && (
+          <div style={{fontSize:10,color:'var(--text-muted)',marginTop:6}}>{seleccion.length} día{seleccion.length>1?'s':''} seleccionado{seleccion.length>1?'s':''}</div>
+        )}
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:8,minWidth:150,flex:'1 1 150px'}}>
         <div className="stat-card" style={{padding:'10px 12px'}}>
           <div className="stat-label" style={{fontSize:10}}>Días no trabajados</div>
           <div className="stat-value" style={{color:'#993C1D',fontSize:20}}>{noTrabajados}</div>
-          <div className="stat-sub" style={{fontSize:10}}>hábiles sin registrar en {MESES[viewM]}</div>
+          <div className="stat-sub" style={{fontSize:10}}>hábiles sin trabajar en {MESES[viewM]}</div>
         </div>
         <div className="stat-card" style={{padding:'10px 12px'}}>
           <div className="stat-label" style={{fontSize:10}}>Trabajados sin corresponder</div>
@@ -237,29 +249,48 @@ function FormTarea({ tarea, onSave, onCancel, categorias = ['Campo','Taller','In
 
 // ── FormRegistro ─────────────────────────────────────────────────────────────
 function FormRegistro({ tareas, registros, quienRegistra, onSave, onCancel }) {
+  const [modo, setModo] = useState('trabajado') // 'trabajado' | 'no_trabajado'
+  const [fechas, setFechas] = useState([])
   const [form, setForm] = useState({
-    fecha: new Date().toISOString().split('T')[0],
     cantidad: 1,
     descripcion: '',
     tarea_id: '',
     campanha: '25-26',
+    observaciones: '',
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const f = (k,v) => setForm(p=>({...p,[k]:v}))
-  const tipo = tipoDia(form.fecha)
+
+  function toggleFecha(fecha) {
+    setFechas(prev => prev.includes(fecha) ? prev.filter(x=>x!==fecha) : [...prev, fecha].sort())
+  }
+
+  const hayRojo = fechas.some(fc=>tipoDia(fc)==='rojo')
+  const haySabado = fechas.some(fc=>tipoDia(fc)==='amarillo')
 
   async function save(e) {
     e.preventDefault()
+    setError('')
+    if (fechas.length === 0) { setError('Elegí al menos un día en el calendario'); return }
+    if (modo === 'no_trabajado' && !form.observaciones.trim()) { setError('Contá el motivo en observaciones'); return }
     setSaving(true)
-    await supabase.from('trabajos_registros').insert({
-      fecha: form.fecha,
-      cantidad: form.cantidad,
-      descripcion: form.descripcion || null,
-      tarea_id: form.tarea_id || null,
+    // reemplaza cualquier registro previo de esos días (evita duplicados si se corrige)
+    await supabase.from('trabajos_registros').delete().in('fecha', fechas)
+    const filas = fechas.map(fecha => ({
+      fecha,
+      tipo: modo,
+      cantidad: modo === 'trabajado' ? form.cantidad : 0,
+      descripcion: modo === 'trabajado' ? (form.descripcion || null) : null,
+      observaciones: modo === 'no_trabajado' ? form.observaciones.trim() : null,
+      tarea_id: modo === 'trabajado' ? (form.tarea_id || null) : null,
       campanha: form.campanha,
       quien_registro: quienRegistra,
-    })
-    setSaving(false); onSave()
+    }))
+    const { error: err } = await supabase.from('trabajos_registros').insert(filas)
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    onSave()
   }
 
   const si = {padding:'7px 10px',border:'1px solid #D8C9A8',borderRadius:7,fontSize:13,fontFamily:'inherit',width:'100%',background:'#FDFAF4'}
@@ -269,60 +300,87 @@ function FormRegistro({ tareas, registros, quienRegistra, onSave, onCancel }) {
       <h3 style={{marginBottom:14}}>Registrar jornada — Walter</h3>
       <form onSubmit={save} style={{display:'flex',flexDirection:'column',gap:12}}>
         <div className="field">
-          <label className="label">Fecha (elegí el día en el calendario)</label>
-          <MiniCalendario value={form.fecha} onChange={v=>f('fecha',v)} registros={registros}/>
+          <label className="label">Tipo de registro</label>
+          <div style={{display:'flex',gap:6}}>
+            <button type="button" onClick={()=>setModo('trabajado')}
+              style={{flex:1,padding:'8px 6px',borderRadius:7,fontSize:13,cursor:'pointer',border:'1px solid',fontFamily:'inherit',
+                background:modo==='trabajado'?VERDE.bg:'transparent',color:modo==='trabajado'?VERDE.text:'var(--arcilla)',
+                borderColor:modo==='trabajado'?VERDE.border:'var(--border)',fontWeight:modo==='trabajado'?600:400}}>
+              ✓ Trabajado
+            </button>
+            <button type="button" onClick={()=>setModo('no_trabajado')}
+              style={{flex:1,padding:'8px 6px',borderRadius:7,fontSize:13,cursor:'pointer',border:'1px solid',fontFamily:'inherit',
+                background:modo==='no_trabajado'?AUSENTE.bg:'transparent',color:modo==='no_trabajado'?AUSENTE.text:'var(--arcilla)',
+                borderColor:modo==='no_trabajado'?AUSENTE.border:'var(--border)',fontWeight:modo==='no_trabajado'?600:400}}>
+              ✕ No trabajado
+            </button>
+          </div>
         </div>
 
-        <div className="grid-2">
-          <div className="field"><label className="label">Fecha seleccionada</label>
-            <div style={{...si,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-              <span style={{textTransform:'capitalize'}}>{fmtFecha(form.fecha)}</span>
-              {tipo==='rojo' && <span style={{fontSize:10,color:'#993C1D',fontWeight:600}}>Domingo/feriado — no debería trabajarse (cuenta doble si se trabaja)</span>}
-              {tipo==='amarillo' && <span style={{fontSize:10,color:'#6B3E22',fontWeight:600}}>Sábado — se espera solo medio día</span>}
+        <div className="field">
+          <label className="label">Días (podés elegir varios en el calendario)</label>
+          <MiniCalendario seleccion={fechas} onToggle={toggleFecha} registros={registros} modo={modo}/>
+        </div>
+
+        {fechas.length > 0 && (hayRojo || haySabado) && (
+          <div style={{fontSize:10,color:'#6B3E22',background:'#F5EDD8',border:'1px solid #C8A96E',borderRadius:6,padding:'6px 10px'}}>
+            {hayRojo && modo==='trabajado' && <div>⚠ Hay domingos/feriados en la selección — cuentan doble.</div>}
+            {haySabado && modo==='trabajado' && <div>Sábado — se espera solo medio día; día completo paga 1 día entero.</div>}
+          </div>
+        )}
+
+        {modo === 'trabajado' ? (
+          <>
+            <div className="grid-2">
+              <div className="field"><label className="label">Cantidad trabajada (por día)</label>
+                <div style={{display:'flex',gap:6}}>
+                  {[[0.5,'½ día'],[1,'1 día completo']].map(([val,lbl])=>(
+                    <button key={val} type="button" onClick={()=>f('cantidad',val)}
+                      style={{flex:1,padding:'8px 6px',borderRadius:7,fontSize:13,cursor:'pointer',border:'1px solid',fontFamily:'inherit',
+                        background:form.cantidad===val?'var(--pasto)':'transparent',
+                        color:form.cantidad===val?'#F5F0E4':'var(--arcilla)',
+                        borderColor:form.cantidad===val?'var(--pasto)':'var(--border)',
+                        fontWeight:form.cantidad===val?600:400}}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="field"><label className="label">Tarea asociada (opcional)</label>
+                <select style={si} value={form.tarea_id} onChange={e=>f('tarea_id',e.target.value)}>
+                  <option value="">— Sin tarea específica —</option>
+                  {tareas.filter(t=>t.estado!=='hecho').map(t=>(
+                    <option key={t.id} value={t.id}>{t.titulo}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
-          <div className="field"><label className="label">Cantidad trabajada</label>
-            <div style={{display:'flex',gap:6}}>
-              {[[0.5,'½ día'],[1,'1 día completo']].map(([val,lbl])=>(
-                <button key={val} type="button" onClick={()=>f('cantidad',val)}
-                  style={{flex:1,padding:'8px 6px',borderRadius:7,fontSize:13,cursor:'pointer',border:'1px solid',fontFamily:'inherit',
-                    background:form.cantidad===val?'var(--pasto)':'transparent',
-                    color:form.cantidad===val?'#F5F0E4':'var(--arcilla)',
-                    borderColor:form.cantidad===val?'var(--pasto)':'var(--border)',
-                    fontWeight:form.cantidad===val?600:400}}>
-                  {lbl}
-                </button>
-              ))}
+            <div className="field"><label className="label">Descripción del trabajo</label>
+              <textarea style={{...si,minHeight:60}} value={form.descripcion} onChange={e=>f('descripcion',e.target.value)}
+                placeholder="Qué se hizo, dónde, con qué materiales..."/>
             </div>
+          </>
+        ) : (
+          <div className="field"><label className="label">Observaciones (motivo)</label>
+            <textarea style={{...si,minHeight:60}} value={form.observaciones} onChange={e=>f('observaciones',e.target.value)}
+              placeholder="Por qué no se trabajó: enfermedad, lluvia, franco, etc."/>
           </div>
+        )}
+
+        <div className="field"><label className="label">Campaña</label>
+          <select style={si} value={form.campanha} onChange={e=>f('campanha',e.target.value)}>
+            {CAMPANHAS.map(c=><option key={c}>{c}</option>)}
+          </select>
         </div>
 
-        <div className="grid-2">
-          <div className="field"><label className="label">Tarea asociada (opcional)</label>
-            <select style={si} value={form.tarea_id} onChange={e=>f('tarea_id',e.target.value)}>
-              <option value="">— Sin tarea específica —</option>
-              {tareas.filter(t=>t.estado!=='hecho').map(t=>(
-                <option key={t.id} value={t.id}>{t.titulo}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field"><label className="label">Campaña</label>
-            <select style={si} value={form.campanha} onChange={e=>f('campanha',e.target.value)}>
-              {CAMPANHAS.map(c=><option key={c}>{c}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="field"><label className="label">Descripción del trabajo</label>
-          <textarea style={{...si,minHeight:60}} value={form.descripcion} onChange={e=>f('descripcion',e.target.value)}
-            placeholder="Qué se hizo, dónde, con qué materiales..."/>
-        </div>
-
+        {error && <div style={{fontSize:11,color:'#993C1D'}}>⚠ {error}</div>}
         {quienRegistra && (
           <div style={{fontSize:11,color:'var(--text-muted)'}}>Registrado como: <strong>{quienRegistra}</strong></div>
         )}
         <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-primary" type="submit" disabled={saving}>{saving?'Guardando...':'Guardar jornada'}</button>
+          <button className="btn btn-primary" type="submit" disabled={saving}>
+            {saving?'Guardando...':`Guardar ${fechas.length||''} ${fechas.length===1?'día':'día(s)'}`}
+          </button>
           <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancelar</button>
         </div>
       </form>
@@ -618,21 +676,34 @@ export default function Trabajos() {
                   {registrosFiltrados.map(r=>{
                     const tarea = tareas.find(t=>t.id===r.tarea_id)
                     const tipo = tipoDia(r.fecha)
+                    const ausente = esNoTrabajado(r)
                     return (
                       <tr key={r.id} style={{borderBottom:'1px solid #EDE0C8'}}>
                         <td style={{padding:'10px 12px',whiteSpace:'nowrap',color:'var(--text-muted)'}}>
                           {fmtFecha(r.fecha)}
-                          {tipo==='rojo' && <span title="Domingo/feriado trabajado" style={{marginLeft:5,color:'#993C1D'}}>⚠</span>}
+                          {tipo==='rojo' && !ausente && <span title="Domingo/feriado trabajado" style={{marginLeft:5,color:'#993C1D'}}>⚠</span>}
                         </td>
                         <td style={{padding:'10px 12px',textAlign:'center'}}>
-                          <span style={{background:r.cantidad===1?'#EBF4E8':'#F5EDD8',color:r.cantidad===1?'#2E4F26':'#6B3E22',borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
-                            {fmtCantidad(r.cantidad)}
-                          </span>
+                          {ausente ? (
+                            <span style={{background:AUSENTE.bg,color:AUSENTE.text,borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
+                              No trabajado
+                            </span>
+                          ) : (
+                            <span style={{background:r.cantidad===1?'#EBF4E8':'#F5EDD8',color:r.cantidad===1?'#2E4F26':'#6B3E22',borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
+                              {fmtCantidad(r.cantidad)}
+                            </span>
+                          )}
                         </td>
                         <td style={{padding:'10px 12px',maxWidth:200}}>
-                          {tarea && <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)',marginBottom:2}}>{tarea.titulo}</div>}
-                          {r.descripcion && <div style={{fontSize:11,color:'var(--text-muted)',lineHeight:1.3}}>{r.descripcion}</div>}
-                          {!tarea && !r.descripcion && <span style={{color:'var(--text-muted)'}}>—</span>}
+                          {ausente ? (
+                            <div style={{fontSize:11,color:AUSENTE.text,lineHeight:1.3}}>{r.observaciones || '—'}</div>
+                          ) : (
+                            <>
+                              {tarea && <div style={{fontSize:11,fontWeight:600,color:'var(--tierra)',marginBottom:2}}>{tarea.titulo}</div>}
+                              {r.descripcion && <div style={{fontSize:11,color:'var(--text-muted)',lineHeight:1.3}}>{r.descripcion}</div>}
+                              {!tarea && !r.descripcion && <span style={{color:'var(--text-muted)'}}>—</span>}
+                            </>
+                          )}
                         </td>
                         <td style={{padding:'10px 12px'}}>
                           <span style={{fontSize:10,background:'#EFECE4',color:'#7A6040',borderRadius:20,padding:'2px 7px'}}>{r.campanha||'—'}</span>
