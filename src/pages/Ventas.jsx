@@ -146,6 +146,8 @@ function EditRowViaje({ viaje, onSave, onDelete, onCancel, puedeEliminar, deBala
       <td>{txt('flete_pagador')}</td>
       {/* Patente */}
       <td>{txt('patente')}</td>
+      {/* Transportista (chofer/empresa de la CP) */}
+      <td>{txt('transporte')}</td>
       {/* Bruto / Tara: si hay pesaje vinculado salen de la Balanza (solo lectura) */}
       <td>{deBalanza ? <input readOnly value={form.bruto} style={ro} title="Dato de Balanza — editar en la pestaña Balanza" /> : num('bruto')}</td>
       <td>{deBalanza ? <input readOnly value={form.tara} style={ro} title="Dato de Balanza — editar en la pestaña Balanza" /> : num('tara')}</td>
@@ -226,6 +228,7 @@ function FormViaje({ onSave, onCancel }) {
     setForm(prev => ({
       ...prev,
       patente: prev.patente || pz.patente || '',
+      transporte: prev.transporte || pz.chofer || pz.transporte || '',
       bruto:   pz.kilos_bruto != null ? String(pz.kilos_bruto) : '',
       tara:    pz.tara != null ? String(pz.tara) : '',
     }))
@@ -791,7 +794,8 @@ export default function Ventas() {
   const [fTitular,  setFTitular]  = useState([])
   const [busqueda,  setBusqueda]  = useState('')
   const [editando,  setEditando]  = useState(null)
-  const [viajesBalanza, setViajesBalanza] = useState(() => new Set())
+  // viaje_id -> { transporte (empresa), chofer } del pesaje de Balanza vinculado
+  const [viajesBalanza, setViajesBalanza] = useState(() => new Map())
 
   const { puedeEditar, isAdmin } = useAuth()
   const puedeEditar_ = isAdmin || puedeEditar('ventas')
@@ -807,10 +811,10 @@ export default function Ventas() {
         supabase.from('granos_viajes').select('*').order('fecha', { ascending: false }),
         supabase.from('contratos').select('*').order('fecha_cierre', { ascending: false }),
         supabase.from('granos_cosecha').select('*').order('fecha', { ascending: false }),
-        supabase.from('granos_pesajes').select('viaje_id').not('viaje_id', 'is', null),
+        supabase.from('granos_pesajes').select('viaje_id, transporte, chofer').not('viaje_id', 'is', null),
       ])
       setViajes(v.data || [])
-      if (pz.data) setViajesBalanza(new Set(pz.data.map(p => p.viaje_id)))
+      if (pz.data) setViajesBalanza(new Map(pz.data.map(p => [p.viaje_id, { transporte: p.transporte, chofer: p.chofer }])))
       setContratos(ct.data || [])
       setCosecha(c.data || [])
     } catch (e) {
@@ -882,7 +886,8 @@ export default function Ventas() {
     if (!matchArr(fTitular, v.titular))   return false
     if (busqueda) {
       const b = busqueda.toLowerCase()
-      return [v.titular, v.comprador, v.grano, v.ncp, v.ctg, v.contrato_aplicado, v.patente, v.flete_pagador]
+      const pzB = viajesBalanza.get(v.id)
+      return [v.titular, v.comprador, v.grano, v.ncp, v.ctg, v.contrato_aplicado, v.patente, v.flete_pagador, v.transporte, pzB?.transporte, pzB?.chofer]
         .some(x => x && x.toLowerCase().includes(b))
     }
     return true
@@ -1252,7 +1257,7 @@ export default function Ventas() {
               <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
             </svg>
             <input value={busqueda} onChange={e=>setBusqueda(e.target.value)}
-              placeholder="Buscar por titular, comprador, CTG, contrato, patente, flete..."
+              placeholder="Buscar por titular, comprador, CTG, contrato, patente, transportista, flete..."
               style={{ width:'100%', padding:'9px 12px 9px 32px', border:'1px solid #D8C9A8', borderRadius:8, fontSize:13, background:'#FDFAF4', fontFamily:'inherit' }} />
           </div>
 
@@ -1264,7 +1269,7 @@ export default function Ventas() {
               : <table className="vt-tbl">
                   <thead><tr>
                     <th>Fecha</th><th>Campaña</th><th>Tipo</th><th>N°CP</th><th>CTG</th><th>Grano</th>
-                    <th>Titular</th><th>Comprador</th><th>Flete pag.</th><th>Patente</th>
+                    <th>Titular</th><th>Comprador</th><th>Flete pag.</th><th>Patente</th><th>Transportista</th>
                     <th>Bruto</th><th>Tara</th><th>Neto campo</th>
                     <th>Kg desc.</th><th>Dif.</th>
                     <th>M.vol</th><th>M.H</th><th>M.S</th>
@@ -1300,6 +1305,18 @@ export default function Ventas() {
                           <td style={{ color:'var(--suelo)' }}>{v.comprador}</td>
                           <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.flete_pagador || '—'}</td>
                           <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.patente || '—'}</td>
+                          {(() => {
+                            const pzB = viajesBalanza.get(v.id)
+                            const empresa = pzB?.transporte || null
+                            const chofer  = pzB?.chofer || v.transporte || null
+                            if (!empresa && !chofer) return <td style={{ fontSize:11, color:'var(--text-muted)' }}>—</td>
+                            return (
+                              <td style={{ fontSize:11, lineHeight:1.25, whiteSpace:'nowrap' }} title={empresa ? `Empresa: ${empresa}${chofer ? ' · Chofer: ' + chofer : ''}` : `Chofer: ${chofer}`}>
+                                {empresa && <div style={{ fontWeight:600, color:'var(--suelo)' }}>{empresa}</div>}
+                                {chofer && <div style={{ color:'var(--text-muted)' }}>{chofer}</div>}
+                              </td>
+                            )
+                          })()}
                           <td style={{ fontFamily:'monospace' }} title={viajesBalanza.has(v.id) ? 'Dato de Balanza' : 'Cargado a mano / CP'}>{viajesBalanza.has(v.id) ? '⚖ ' : ''}{fmtKg(v.bruto)}</td>
                           <td style={{ fontFamily:'monospace' }}>{fmtKg(v.tara)}</td>
                           <td style={{ fontFamily:'monospace', fontWeight:500 }}>{fmtKg(v.neto)}</td>
@@ -1327,7 +1344,7 @@ export default function Ventas() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'#F5F0E4', fontWeight:600 }}>
-                      <td colSpan={10} style={{ padding:'10px', fontSize:11, color:'var(--text-muted)' }}>{filtered.length} viajes</td>
+                      <td colSpan={11} style={{ padding:'10px', fontSize:11, color:'var(--text-muted)' }}>{filtered.length} viajes</td>
                       <td colSpan={2}></td>
                       <td style={{ padding:'10px', fontFamily:'monospace' }}>{fmtKg(totalNeto)}</td>
                       <td></td>
