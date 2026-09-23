@@ -71,7 +71,7 @@ function StatCard({ label, value, sub, color, pct }) {
 }
 
 // ── Fila de edición de viaje ────────────────────────────────────────────────
-function EditRowViaje({ viaje, onSave, onDelete, onCancel, puedeEliminar }) {
+function EditRowViaje({ viaje, onSave, onDelete, onCancel, puedeEliminar, deBalanza }) {
   const [form, setForm] = useState({
     fecha:             viaje.fecha || '',
     campanha:          viaje.campanha || '25-26',
@@ -100,7 +100,7 @@ function EditRowViaje({ viaje, onSave, onDelete, onCancel, puedeEliminar }) {
   const [deleting, setDeleting]   = useState(false)
 
   const netoCalc = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
-  const difCalc  = (parseFloat(form.kg_descargados)||0) - netoCalc
+  const difCalc  = form.kg_descargados === '' ? null : (parseFloat(form.kg_descargados)||0) - netoCalc
 
   async function save() {
     setSaving(true)
@@ -146,10 +146,9 @@ function EditRowViaje({ viaje, onSave, onDelete, onCancel, puedeEliminar }) {
       <td>{txt('flete_pagador')}</td>
       {/* Patente */}
       <td>{txt('patente')}</td>
-      {/* Bruto */}
-      <td>{num('bruto')}</td>
-      {/* Tara */}
-      <td>{num('tara')}</td>
+      {/* Bruto / Tara: si hay pesaje vinculado salen de la Balanza (solo lectura) */}
+      <td>{deBalanza ? <input readOnly value={form.bruto} style={ro} title="Dato de Balanza — editar en la pestaña Balanza" /> : num('bruto')}</td>
+      <td>{deBalanza ? <input readOnly value={form.tara} style={ro} title="Dato de Balanza — editar en la pestaña Balanza" /> : num('tara')}</td>
       {/* Neto campo — calculado */}
       <td><input readOnly value={netoCalc ? Math.round(netoCalc).toLocaleString('es-AR')+' kg' : '—'} style={ro} /></td>
       {/* Kg desc. */}
@@ -227,8 +226,8 @@ function FormViaje({ onSave, onCancel }) {
     setForm(prev => ({
       ...prev,
       patente: prev.patente || pz.patente || '',
-      bruto:   pz.kilos_bruto != null ? String(pz.kilos_bruto) : prev.bruto,
-      tara:    pz.tara != null ? String(pz.tara) : prev.tara,
+      bruto:   pz.kilos_bruto != null ? String(pz.kilos_bruto) : '',
+      tara:    pz.tara != null ? String(pz.tara) : '',
     }))
   }
 
@@ -268,8 +267,9 @@ function FormViaje({ onSave, onCancel }) {
       if (parsed.flete_pagador) f('flete_pagador', parsed.flete_pagador)
       if (parsed.patente)       f('patente',       parsed.patente)
       if (parsed.transporte)    f('transporte',    parsed.transporte)
-      if (parsed.bruto)         f('bruto',         String(parsed.bruto))
-      if (parsed.tara)          f('tara',          String(parsed.tara))
+      // Bruto/tara de la CP solo si no hay pesaje de balanza vinculado (la balanza manda)
+      if (!pesajeId && parsed.bruto) f('bruto', String(parsed.bruto))
+      if (!pesajeId && parsed.tara)  f('tara',  String(parsed.tara))
       setTimeout(() => setIaMsg(''), 5000)
     } catch(err) {
       setIaMsg('Error: ' + (err?.message || String(err)))
@@ -394,8 +394,12 @@ function FormViaje({ onSave, onCancel }) {
         <div style={{ background:'#F0F6FA', border:'1px solid #B8D0D8', borderRadius:8, padding:'12px 14px' }}>
           <div style={{ fontSize:11, fontWeight:500, color:'var(--lluvia)', letterSpacing:'0.05em', textTransform:'uppercase', marginBottom:10 }}>Pesada campo</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-            <div className="field"><label className="label">Bruto (kg)</label>{inp('bruto','number')}</div>
-            <div className="field"><label className="label">Tara (kg)</label>{inp('tara','number')}</div>
+            <div className="field"><label className="label">Bruto (kg){pesajeId ? ' · balanza' : ''}</label>{pesajeId
+              ? <input className="input" type="number" value={form.bruto} readOnly style={{ width:'100%', background:'#E8EFF3', color:'var(--lluvia)', fontWeight:600 }} />
+              : inp('bruto','number')}</div>
+            <div className="field"><label className="label">Tara (kg){pesajeId ? ' · balanza' : ''}</label>{pesajeId
+              ? <input className="input" type="number" value={form.tara} readOnly style={{ width:'100%', background:'#E8EFF3', color:'var(--lluvia)', fontWeight:600 }} />
+              : inp('tara','number')}</div>
             <div className="field"><label className="label">Neto (kg)</label>
               <input className="input" type="number" value={neto||''} readOnly
                 style={{ width:'100%', background:'#E8EFF3', color:'var(--lluvia)', fontWeight:600 }} />
@@ -787,21 +791,26 @@ export default function Ventas() {
   const [fTitular,  setFTitular]  = useState([])
   const [busqueda,  setBusqueda]  = useState('')
   const [editando,  setEditando]  = useState(null)
+  const [viajesBalanza, setViajesBalanza] = useState(() => new Set())
 
   const { puedeEditar, isAdmin } = useAuth()
   const puedeEditar_ = isAdmin || puedeEditar('ventas')
 
   useEffect(() => { fetchAll() }, [])
+  // Al volver a Viajes se refresca: los pesos editados en Balanza se propagan por trigger en la base
+  useEffect(() => { if (tab === 'viajes') fetchAll() }, [tab])
 
   async function fetchAll() {
     setLoading(true)
     try {
-      const [v, ct, c] = await Promise.all([
+      const [v, ct, c, pz] = await Promise.all([
         supabase.from('granos_viajes').select('*').order('fecha', { ascending: false }),
         supabase.from('contratos').select('*').order('fecha_cierre', { ascending: false }),
         supabase.from('granos_cosecha').select('*').order('fecha', { ascending: false }),
+        supabase.from('granos_pesajes').select('viaje_id').not('viaje_id', 'is', null),
       ])
       setViajes(v.data || [])
+      if (pz.data) setViajesBalanza(new Set(pz.data.map(p => p.viaje_id)))
       setContratos(ct.data || [])
       setCosecha(c.data || [])
     } catch (e) {
@@ -815,7 +824,7 @@ export default function Ventas() {
     asegurarMaestro('comprador', form.comprador, COMPRADORES)
     asegurarMaestro('titular', form.titular, TITULARES)
     const netoCalc = (parseFloat(form.bruto)||0) - (parseFloat(form.tara)||0)
-    const difCalc  = (parseFloat(form.kg_descargados)||0) - netoCalc
+    const difCalc  = (form.kg_descargados === '' || form.kg_descargados == null) ? null : (parseFloat(form.kg_descargados)||0) - netoCalc
     const clean    = v => (v === '' || v === undefined) ? null : v
     const num      = v => { const n = parseFloat(v); return isNaN(n) ? null : n }
     // Neto Romaneo: si no se cargó a mano, se calcula con lo que haya (mermas ausentes = 0)
@@ -1268,6 +1277,7 @@ export default function Ventas() {
                         return (
                           <EditRowViaje key={v.id} viaje={v}
                             puedeEliminar={puedeEditar_}
+                            deBalanza={viajesBalanza.has(v.id)}
                             onSave={form => saveViaje(v.id, form)}
                             onDelete={deleteViaje}
                             onCancel={() => setEditando(null)} />
@@ -1290,7 +1300,7 @@ export default function Ventas() {
                           <td style={{ color:'var(--suelo)' }}>{v.comprador}</td>
                           <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.flete_pagador || '—'}</td>
                           <td style={{ fontSize:11, color:'var(--text-muted)' }}>{v.patente || '—'}</td>
-                          <td style={{ fontFamily:'monospace' }}>{fmtKg(v.bruto)}</td>
+                          <td style={{ fontFamily:'monospace' }} title={viajesBalanza.has(v.id) ? 'Dato de Balanza' : 'Cargado a mano / CP'}>{viajesBalanza.has(v.id) ? '⚖ ' : ''}{fmtKg(v.bruto)}</td>
                           <td style={{ fontFamily:'monospace' }}>{fmtKg(v.tara)}</td>
                           <td style={{ fontFamily:'monospace', fontWeight:500 }}>{fmtKg(v.neto)}</td>
                           <td style={{ fontFamily:'monospace' }}>{fmtKg(v.kg_descargados)}</td>
